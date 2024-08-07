@@ -1,5 +1,5 @@
 # Term-squire
-Term-squire is a tool designed for importing .mtf files, which are exported by the TermStar Term Management software.
+Term-squire is a term management tool used in translation, it helps manage and organize terminology data efficiently It is also designed for importing .mtf files exported by the TermStar Term Management software. 
 
 ## Usage:
 To run Term-squire, download the appropriate binary for your operating system from the repository's 'releases' section.
