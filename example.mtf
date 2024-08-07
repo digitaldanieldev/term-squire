@@ -1,0 +1,179 @@
+<?xml version='1.0'?> 
+<!DOCTYPE martif PUBLIC "ISO 12200:1997//DTD for MARTIF (Part 2 V1)//EN" [ ]> 
+<martif type='Part2v1' lang='en'> 
+
+<martifHeader> 
+
+<fileDesc>     
+<titleStmt><title>Transit 3.0 TermStar export file</title></titleStmt> 
+<publicationStmt><p></p></publicationStmt>   
+<sourceDesc><p>TermStar dictionary</p>       
+</sourceDesc> 
+
+</fileDesc>     
+<encodingDesc>  
+    <p type='DatCatSetName'>maxi-set</p>      
+    <p type='DatCatSetVersion'>1</p>          
+</encodingDesc>   
+<revisionDesc>    
+    <change><p>20150319T092135Z</p></change> 
+</revisionDesc>  
+
+<databaseDesc>   
+<p type='TS_DictName'>FunnyDictionary</p>
+<p type='TS_DataBase'>GagStar Received</p>
+<p type='TS_DictImagePath' mode='AbsolutePaths'></p>
+<p type='TS_DictProperty' id='ExtractedDictName' val='0'>LOLFUN</p>
+<p type='TS_DictProperty' id='ExtractedDataBase' val='0'>GagStar</p>
+<p type='TS_DictProperty' id='ExtractTime' val='0'>20240806T123456Z</p>
+<p type='TS_DictProperty' id='MainLang' val='0'>eng-gb</p>
+<p type='TS_DictProperty' id='OriginalDatabaseGUID' val='0'>{F00B4D0D-1234-5678-ABCD-EF1234567890}</p>
+<p type='TS_DictProperty' id='ExportedLangs' val='0'>ENG,NLD,DEU,ITA,LAT</p>
+</databaseDesc>   
+
+</martifHeader>  
+
+<text>           
+<body>           
+
+<termEntry id='1'>
+  <note type='TS_CreateId'>Alice</note>
+  <date type='origination'>20240806T123000Z</date>
+  <note type='TS_UpdateId'>Bob</note>
+  <date type='modification'>20240806T130000Z</date>
+
+<langSet lang='nld-nl'>
+<ntig><termGrp>
+  <term>aap</term>
+  <termNote type='termType'>full form</termNote>
+  <termNote type='TS_CreateId'>Alice</termNote>
+  <date type='origination'>20240806T123000Z</date>
+  <termNote type='TS_UpdateId'>Alice</termNote>
+  <date type='modification'>20240806T123000Z</date>
+</termGrp></ntig>
+
+</langSet>
+
+<langSet lang='eng-gb'>
+<ntig><termGrp>
+  <term>monkey</term>
+  <termNote type='termType'>full form</termNote>
+  <termNote type='TS_CreateId'>Alice</termNote>
+  <date type='origination'>20240806T123000Z</date>
+  <termNote type='TS_UpdateId'>Bob</termNote>
+  <date type='modification'>20240806T130000Z</date>
+  <termNote type='TS_Subject'>animal</termNote>
+  <descrip type='definition'>A small to medium-sized primate known for its long tail and agility.</descrip> 
+</termGrp></ntig>
+
+</langSet>
+
+<langSet lang='lat'>
+<ntig><termGrp>
+  <term>simia</term>
+  <termNote type='termType'>full form</termNote>
+  <termNote type='TS_CreateId'>Alice</termNote>
+  <date type='origination'>20240806T123000Z</date>
+  <termNote type='TS_UpdateId'>Bob</termNote>
+  <date type='modification'>20240806T130000Z</date>
+  <termNote type='TS_Subject'>animal</termNote>
+  <descrip type='definition'>Primates parvi ad mediocres, nota longa cauda et agilitatis.</descrip> 
+</termGrp></ntig>
+
+</langSet>
+</termEntry>
+
+<termEntry id='2'>
+  <note type='TS_CreateId'>Alice</note>
+  <date type='origination'>20240806T124000Z</date>
+  <note type='TS_UpdateId'>Bob</note>
+  <date type='modification'>20240806T131000Z</date>
+
+<langSet lang='nld-nl'>
+<ntig><termGrp>
+  <term>noot</term>
+  <termNote type='termType'>full form</termNote>
+  <termNote type='TS_CreateId'>Alice</termNote>
+  <date type='origination'>20240806T124000Z</date>
+  <termNote type='TS_UpdateId'>Alice</termNote>
+  <date type='modification'>20240806T124000Z</date>
+</termGrp></ntig>
+
+</langSet>
+
+<langSet lang='eng-gb'>
+<ntig><termGrp>
+  <term>nut</term>
+  <termNote type='termType'>full form</termNote>
+  <termNote type='TS_CreateId'>Alice</termNote>
+  <date type='origination'>20240806T124000Z</date>
+  <termNote type='TS_UpdateId'>Bob</termNote>
+  <date type='modification'>20240806T131000Z</date>
+  <termNote type='TS_Subject'>food</termNote>
+</termGrp></ntig>
+
+</langSet>
+
+<langSet lang='lat'>
+<ntig><termGrp>
+  <term>nux</term>
+  <termNote type='termType'>full form</termNote>
+  <termNote type='TS_CreateId'>Alice</termNote>
+  <date type='origination'>20240806T124000Z</date>
+  <termNote type='TS_UpdateId'>Bob</termNote>
+  <date type='modification'>20240806T131000Z</date>
+  <termNote type='TS_Subject'>cibus</termNote>
+</termGrp></ntig>
+
+</langSet>
+</termEntry>
+
+<termEntry id='3'>
+  <note type='TS_CreateId'>Alice</note>
+  <date type='origination'>20240806T130000Z</date>
+  <note type='TS_UpdateId'>Bob</note>
+  <date type='modification'>20240806T140000Z</date>
+
+<langSet lang='eng-gb'>
+<ntig><termGrp>
+  <term>whimsical</term>
+  <termNote type='termType'>adjective</termNote>
+  <termNote type='TS_CreateId'>Alice</termNote>
+  <date type='origination'>20240806T130000Z</date>
+  <termNote type='TS_UpdateId'>Bob</termNote>
+  <date type='modification'>20240806T140000Z</date>
+  <termNote type='TS_Subject'>character</termNote>
+  <descrip type='definition'>Playfully quaint or fanciful, especially in an appealing and amusing way.</descrip> 
+</termGrp></ntig>
+
+</langSet>
+</termEntry>
+
+<termEntry id='4'>
+  <note type='TS_CreateId'>Alice</note>
+  <date type='origination'>20240806T131000Z</date>
+  <note type='TS_UpdateId'>Bob</note>
+  <date type='modification'>20240806T141000Z</date>
+
+<langSet lang='eng-gb'>
+<ntig><termGrp>
+  <term>guffaw</term>
+  <termNote type='termType'>noun</termNote>
+  <termNote type='TS_CreateId'>Alice</termNote>
+  <date type='origination'>20240806T131000Z</date>
+  <termNote type='TS_UpdateId'>Bob</termNote>
+  <date type='modification'>20240806T141000Z</date>
+  <termNote type='TS_Subject'>laughter</termNote>
+  <descrip type='definition'>A loud and boisterous laugh.</descrip> 
+</termGrp></ntig>
+
+</langSet>
+</termEntry>
+
+</body>  
+
+<back>   
+</back>  
+
+</text>  
+</martif>

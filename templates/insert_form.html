@@ -1,0 +1,94 @@
+{% extends "base.html" %} 
+
+{% block title %}Term squire{% endblock %} 
+
+{% block header %}Insert Term{% endblock %} {% block content %}
+<a href="/terms" class="button">Terms</a>
+
+<form id="insertTermForm" action="/insert_term" method="post" onsubmit="handleSubmit(event)">
+  <label for="language">Language:</label>
+  <input type="text" id="language" name="term_language_set[language]" required />
+
+  <label for="term">Term:</label>
+  <input type="text" id="term" name="term_language_set[term]" required />
+
+  <label for="term_type">Term Type:</label>
+  <input type="text" id="term_type" name="term_language_set[term_type]" />
+
+  <label for="creator_id">Created By:</label>
+  <input type="text" id="creator_id" name="term_language_set[creator_id]" />
+
+  <label for="updater_id">Updated By:</label>
+  <input type="text" id="updater_id" name="term_language_set[updater_id]" />
+
+  <label for="subject">Subject:</label>
+  <input type="text" id="subject" name="term_language_set[subject]" />
+
+  <label for="source">Source:</label>
+  <input type="text" id="source" name="term_language_set[source]" />
+
+  <label for="user">User:</label>
+  <input type="text" id="user" name="term_language_set[user]" />
+
+  <label for="attributes">Attributes:</label>
+  <input type="text" id="attributes" name="term_language_set[attributes]" />
+
+  <label for="remark">Remark:</label>
+  <input type="text" id="remark" name="term_language_set[remark]" />
+
+  <label for="url">URL:</label>
+  <input type="url" id="url" name="term_language_set[url]" />
+
+  <label for="context">Context:</label>
+  <input type="text" id="context" name="term_language_set[context]" />
+
+  <label for="definition">Definition:</label>
+  <input type="text" id="definition" name="term_language_set[definition]" />
+
+  <input type="submit" value="Save" class="button-save" />
+</form>
+
+<script>
+  async function handleSubmit(event) {
+    event.preventDefault();
+
+    const form = event.target;
+    const formData = new FormData(form);
+    const data = {};
+
+    formData.forEach((value, key) => {
+      const keys = key.split("[").map((k) => k.replace("]", ""));
+      keys.reduce((acc, k, i) => {
+        if (i === keys.length - 1) {
+          acc[k] = value;
+        } else {
+          acc[k] = acc[k] || {};
+        }
+        return acc[k];
+      }, data);
+    });
+
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (response.ok) {
+        alert("Term inserted successfully");
+        form.reset();
+        window.location.reload();
+      } else {
+        const errorText = await response.text();
+        alert(`Failed to insert term: ${errorText}`);
+      }
+    } catch (error) {
+      console.error("Error submitting form", error);
+      alert("Error submitting form");
+    }
+  }
+</script>
+{% endblock %}

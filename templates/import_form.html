@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Term squire{% endblock %}
+
+{% block header %}Import Dictionary{% endblock %}
+
+{% block content %}
+<a href="/terms" class="button">Terms</a>
+
+<h2>Import Dictionary File</h2>
+
+<form id="importDictionaryForm" action="/import_dictionary" method="post" enctype="multipart/form-data"
+    onsubmit="handleSubmit(event)">
+    <label for="dictionaryFile">Select dictionary file:</label>
+    <input type="file" id="dictionaryFile" name="dictionaryFile" required>
+    <input type="submit" value="Upload" class="button-save">
+</form>
+
+<div id="loadingMessage">
+    <div class="spinner"></div>
+    <p>Importing dictionary, please wait...</p>
+</div>
+
+<script>
+    async function handleSubmit(event) {
+        event.preventDefault();
+
+        const form = event.target;
+        const formData = new FormData(form);
+        const loadingMessage = document.getElementById('loadingMessage');
+
+        loadingMessage.style.display = 'block';
+
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (response.ok) {
+                alert('Dictionary imported successfully');
+                form.reset();
+                window.location.href = '/terms';
+            } else {
+                const errorText = await response.text();
+                alert(`Failed to import dictionary: ${errorText}`);
+            }
+        } catch (error) {
+            console.error('Error submitting form', error);
+            alert('Error submitting form. Please try again.');
+        } finally {
+            loadingMessage.style.display = 'none';
+        }
+    }
+</script>
+{% endblock %}
+</body>
+
+</html>

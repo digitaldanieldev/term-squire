@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Term squire{% endblock %}
+
+{% block header %}Search{% endblock %}
+
+{% block content %}
+<a href="/insert_form">Insert New Term</a>
+<a href="/settings">Settings</a>
+<a href="/import_form" class="button">Import Dictionary</a>
+
+<h2>Search Results</h2>
+
+<form id="searchForm" method="get" action="/search">
+    <label for="searchTerm">Search Term:</label>
+    <input type="text" id="searchTerm" name="term" placeholder="blank search for all terms">
+    
+    <label for="searchLanguage">Language:</label>
+    <input type="text" id="searchLanguage" name="language">
+
+    <label for="viewAllResults">
+        <input type="checkbox" id="viewAllResults" name="view_all_results" value="1">
+        View All Results
+    </label>
+
+    <input type="submit" value="Search" class="button-save">
+</form>
+
+<p id="itemCount">0 items found</p>
+
+<table id="termsTable">
+    <thead>
+        <tr>
+            <th data-column="0">Term ID</th>
+            <th data-column="1">Term Set ID</th>
+            <th data-column="2">Term</th>
+            <th data-column="3">Language</th>
+            <th data-column="4">Term Type</th>
+            <th data-column="5">Created By</th>
+            <th data-column="6">Created Date</th>
+            <th data-column="7">Updated By</th>
+            <th data-column="8">Updated Date</th>
+            <th data-column="9">Subject</th>
+            <th data-column="10">Source</th>
+            <th data-column="11">User</th>
+            <th data-column="12">Attributes</th>
+            <th data-column="13">Remark</th>
+            <th data-column="14">URL</th>
+            <th data-column="15">Context</th>
+            <th data-column="16">Definition</th>
+        </tr>
+    </thead>
+    <tbody id="termsTableBody">
+        <!-- Table rows will be inserted here dynamically -->
+    </tbody>
+</table>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const searchTerm = urlParams.get('term');
+        const searchLanguage = urlParams.get('language');
+        const viewAllResults = urlParams.get('view_all_results') === '1';
+
+        if (searchTerm) {
+            document.getElementById('searchTerm').value = searchTerm;
+        }
+        if (searchLanguage) {
+            document.getElementById('searchLanguage').value = searchLanguage;
+        }
+        if (viewAllResults) {
+            document.getElementById('viewAllResults').checked = true;
+        }
+
+        performSearch(searchTerm, searchLanguage, viewAllResults);
+    });
+
+    async function performSearch(term, language, viewAllResults) {
+        const query = new URLSearchParams({
+            term: term || '',
+            language: language || '',
+            view_all_results: viewAllResults ? 1 : 0
+        });
+
+        try {
+            const response = await fetch(`/search?${query.toString()}`);
+            const data = await response.json();
+
+            const tableBody = document.getElementById('termsTableBody');
+            tableBody.innerHTML = '';
+
+            if (data.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="17">No results found</td></tr>';
+                document.getElementById('itemCount').textContent = '0 items found';
+                return;
+            }
+
+            data.forEach(term => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td data-column="0"><a href="/term_detail?term_id=${term.term_id}">${term.term_id}</a></td>
+                    <td data-column="1">${term.term_set_id}</td>
+                    <td data-column="2">${term.term_language_set.term || 'N/A'}</td>
+                    <td data-column="3">${term.term_language_set.language || 'N/A'}</td>
+                    <td data-column="4">${term.term_language_set.term_type || 'N/A'}</td>
+                    <td data-column="5">${term.term_language_set.creator_id || 'N/A'}</td>
+                    <td data-column="6">${new Date(term.term_language_set.creation_timestamp * 1000).toLocaleDateString() || 'N/A'}</td>
+                    <td data-column="7">${term.term_language_set.updater_id || 'N/A'}</td>
+                    <td data-column="8">${new Date(term.term_language_set.update_timestamp * 1000).toLocaleDateString() || 'N/A'}</td>
+                    <td data-column="9">${term.term_language_set.subject || 'N/A'}</td>
+                    <td data-column="10">${term.term_language_set.source || 'N/A'}</td>
+                    <td data-column="11">${term.term_language_set.user || 'N/A'}</td>
+                    <td data-column="12">${term.term_language_set.attributes || 'N/A'}</td>
+                    <td data-column="13">${term.term_language_set.remark || 'N/A'}</td>
+                    <td data-column="14">${term.term_language_set.url || 'N/A'}</td>
+                    <td data-column="15">${term.term_language_set.context || 'N/A'}</td>
+                    <td data-column="16">${term.term_language_set.definition || 'N/A'}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+
+            document.getElementById('itemCount').textContent = `${data.length} items found`;
+        } catch (error) {
+            console.error('Error fetching search results:', error);
+            alert('Failed to fetch search results. Please try again.');
+        }
+    }
+</script>
+
+{% endblock %}
+</body>
+
+</html>

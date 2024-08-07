@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}Title{% endblock %}</title>
+    <style>
+      .theme-cyberpunk-v0 {
+        --text-color: #e0e0e0;
+        --bg-gradient-start: #002f6c;
+        --bg-gradient-end: #003d7a;
+        --primary-color: #ff007f;
+        --list-bg: rgba(20, 20, 20, 0.9);
+        --list-item-bg: #222;
+        --button-bg-start: #ff5722;
+        --button-bg-end: #e64a19;
+        --button-shadow: rgba(0, 0, 0, 0.5);
+        --button-text-color: #000;
+        --button-save-bg-start: #00ff99;
+        --button-save-bg-end: #00cc99;
+        --button-save-text-color: #000;
+        --button-delete-bg-start: #ff1744;
+        --button-delete-bg-end: #d50032;
+        --button-delete-text-color: #fff;
+        --control-btn-shadow: rgba(0, 0, 0, 0.3);
+      }
+
+      .theme-cyberpunk-v1 {
+        --text-color: #f5f5f5;
+        --bg-gradient-start: #001f3f;
+        --bg-gradient-end: #003366;
+        --primary-color: #b73b7f;
+        --list-bg: rgba(20, 20, 20, 0.9);
+        --list-item-bg: #1a1a1a;
+        --button-bg-start: #8e2de2;
+        --button-bg-end: #4a00e0;
+        --button-shadow: rgba(0, 0, 0, 0.5);
+        --button-text-color: #fff;
+        --button-save-bg-start: #ff6f61;
+        --button-save-bg-end: #d84315;
+        --button-save-text-color: #fff;
+        --button-delete-bg-start: #d50032;
+        --button-delete-bg-end: #c51162;
+        --button-delete-text-color: #fff;
+        --control-btn-shadow: rgba(0, 0, 0, 0.3);
+      }
+
+      .theme-cyberpunk-v2 {
+        --text-color: #e0e0e0;
+        --bg-gradient-start: #001b33;
+        --bg-gradient-end: #004080;
+        --primary-color: #00bfff;
+        --list-bg: rgba(20, 20, 20, 0.9);
+        --list-item-bg: #212121;
+        --button-bg-start: #1e90ff;
+        --button-bg-end: #104e8b;
+        --button-shadow: rgba(0, 0, 0, 0.5);
+        --button-text-color: #fff;
+        --button-save-bg-start: #ff4500;
+        --button-save-bg-end: #e63946;
+        --button-save-text-color: #fff;
+        --button-delete-bg-start: #ff6347;
+        --button-delete-bg-end: #ff4500;
+        --button-delete-text-color: #fff;
+        --control-btn-shadow: rgba(0, 0, 0, 0.3);
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        font-size: 1rem;
+        color: var(--text-color);
+        background: linear-gradient(
+          to bottom,
+          var(--bg-gradient-start),
+          var(--bg-gradient-end)
+        );
+        margin: 0;
+        padding: 0;
+        line-height: 1.6;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 1em;
+      }
+
+      h1 {
+        text-align: center;
+        color: var(--primary-color);
+        margin: 0;
+        padding: 1em 0;
+        font-size: 2rem;
+      }
+
+      table,
+      .term-detail-table,
+      form {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid var(--list-bg);
+        margin: 1em 0;
+      }
+
+      table,
+      .term-detail-table,
+      form,
+      th,
+      td {
+        border: 1px solid var(--list-bg);
+      }
+
+      .term-detail-table td:first-child {
+        width: auto;
+        white-space: nowrap;
+      }
+
+      .term-detail-table td:nth-child(2) {
+        width: 100%;
+      }
+
+      th,
+      td {
+        padding: 0.625em;
+        text-align: left;
+        background-color: var(--list-item-bg);
+        color: var(--text-color);
+      }
+
+      .button-link,
+      .button-style,
+      a {
+        display: inline-block;
+        margin-bottom: 1.25em;
+        padding: 0.625em 1.25em;
+        background: linear-gradient(
+          to bottom,
+          var(--button-bg-start),
+          var(--button-bg-end)
+        );
+        color: var(--button-text-color);
+        text-decoration: none;
+        border-radius: 0.25em;
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 2px 5px var(--button-shadow);
+      }
+
+      .button-link:hover,
+      .button-style:hover,
+      a:hover {
+        background: linear-gradient(
+          to bottom,
+          var(--button-bg-end),
+          var(--button-bg-start)
+        );
+        color: var(--button-text-color-light);
+      }
+
+      form {
+        margin: 0.625em;
+        padding: 1em;
+        background-color: var(--list-item-bg);
+        color: var(--text-color);
+        width: 80%;
+      }
+
+      label {
+        display: block;
+        margin: 0.625em 0 0.3125em;
+        color: var(--text-color);
+      }
+
+      input[type="text"],
+      input[type="url"] {
+        width: 90%;
+        padding: 0.5em;
+        margin-bottom: 0.625em;
+        border: 1px solid var(--button-bg-start);
+        border-radius: 0.25em;
+        background-color: var(--list-item-bg);
+        color: var(--text-color);
+        padding-left: 1em;
+        padding-right: 1em;
+      }
+
+      input[type="submit"].button-save {
+        display: inline-block;
+        margin-bottom: 1.25em;
+        padding: 0.625em 1.25em;
+        background: linear-gradient(
+          to bottom,
+          var(--button-save-bg-start),
+          var(--button-save-bg-end)
+        );
+        color: var(--button-save-text-color);
+        text-decoration: none;
+        border-radius: 0.25em;
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 2px 5px var(--control-btn-shadow);
+      }
+
+      input[type="submit"].button-save:hover {
+        background: linear-gradient(
+          to bottom,
+          var(--button-save-bg-end),
+          var(--button-save-bg-start)
+        );
+        color: var(--button-save-text-color);
+      }
+
+      .button-delete {
+        display: inline-block;
+        margin-bottom: 1.25em;
+        padding: 0.625em 1.25em;
+        background: linear-gradient(
+          to bottom,
+          var(--button-delete-bg-start),
+          var(--button-delete-bg-end)
+        );
+        color: var(--button-delete-text-color);
+        text-decoration: none;
+        border-radius: 0.25em;
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 2px 5px var(--control-btn-shadow);
+      }
+
+      .button-delete:hover {
+        background: linear-gradient(
+          to bottom,
+          var(--button-delete-bg-end),
+          var(--button-delete-bg-start)
+        );
+        color: var(--button-delete-text-color);
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      .theme-selector {
+        position: fixed;
+        top: 1em;
+        right: 1em;
+        background: var(--list-bg);
+        padding: 0.5em;
+        border-radius: 0.25em;
+        box-shadow: 0 2px 5px var(--button-shadow);
+      }
+
+      .theme-selector select {
+        background: var(--list-bg);
+        color: var(--text-color);
+        border: none;
+        padding: 0.5em;
+        border-radius: 0.25em;
+        cursor: pointer;
+      }
+
+      .theme-selector select option {
+        background: var(--list-bg);
+        color: var(--text-color);
+      }
+
+      #loadingMessage {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        padding: 20px;
+        background-color: rgba(0, 0, 0, 0.5);
+        color: #fff;
+        border-radius: 5px;
+      }
+
+      .spinner {
+        border: 8px solid #f3f3f3;
+        border-top: 8px solid #3498db;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+    {% block custom_styles %}{% endblock %}
+  </head>
+
+  <body class="theme-cyberpunk-v0">
+    <div class="container">
+      <div class="theme-selector">
+        <label for="theme-select">Select Theme:</label>
+        <select id="theme-select">
+          <option value="theme-cyberpunk-v0">theme 1</option>
+          <option value="theme-cyberpunk-v1">theme 2</option>
+          <option value="theme-cyberpunk-v2">theme 3</option>
+        </select>
+      </div>
+
+      <h1>{% block header %}Header{% endblock %}</h1>
+      {% block content %}{% endblock %}
+    </div>
+
+    <script>
+      document
+        .getElementById("theme-select")
+        .addEventListener("change", function (event) {
+          document.body.className = event.target.value;
+          localStorage.setItem("theme", event.target.value);
+        });
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const savedTheme = localStorage.getItem("theme") || "theme-dark";
+        document.body.className = savedTheme;
+        document.getElementById("theme-select").value = savedTheme;
+      });
+
+      function applyColumnSettings() {
+        const storedSettings = JSON.parse(
+          localStorage.getItem("columnSettings")
+        );
+
+        if (storedSettings) {
+          const tables = document.querySelectorAll("table");
+          tables.forEach((table) => {
+            const rows = table.rows;
+
+            for (let i = 0; i < rows.length; i++) {
+              const cells = rows[i].cells;
+              for (let j = 0; j < cells.length; j++) {
+                cells[j].style.display = storedSettings.includes(j)
+                  ? ""
+                  : "none";
+              }
+            }
+          });
+        }
+      }
+
+      function applyFontSettings() {
+        const storedFont = localStorage.getItem("fontSetting");
+        const storedFontSize = localStorage.getItem("fontSizeSetting");
+
+        if (storedFont) {
+          document.body.style.fontFamily = storedFont;
+        }
+
+        if (storedFontSize) {
+          document.body.style.fontSize = storedFontSize;
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        applyColumnSettings();
+        applyFontSettings();
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Terms{% endblock %}
+
+{% block header %}Terms{% endblock %}
+
+{% block content %}
+<a href="/insert_form">Insert New Term</a>
+<a href="/settings">Settings</a>
+<a href="/import_form" class="button">Import Dictionary</a>
+
+<h2>Search Results</h2>
+
+<form id="searchForm">
+    <label for="searchTerm">Search Term:</label>
+    <input type="text" id="searchTerm" name="term">
+
+    <label for="searchLanguage">Language:</label>
+    <input type="text" id="searchLanguage" name="language">
+
+    <input type="submit" value="Search" class="button-save">
+</form>
+
+<p id="itemCount">0 items found</p>
+
+<table id="termsTable">
+    <thead>
+        <tr id="tableHeaderRow">
+            <!-- Headers will be populated dynamically based on user settings -->
+        </tr>
+    </thead>
+    <tbody id="termsTableBody">
+        <!-- Table rows will be inserted here dynamically -->
+    </tbody>
+</table>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('searchForm').addEventListener('submit', async (event) => {
+            event.preventDefault(); 
+
+            const searchTerm = document.getElementById('searchTerm').value;
+            const searchLanguage = document.getElementById('searchLanguage').value;
+
+            await performSearch(searchTerm, searchLanguage);
+        });
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const searchTerm = urlParams.get('term');
+        const searchLanguage = urlParams.get('language');
+
+        if (searchTerm) {
+            document.getElementById('searchTerm').value = searchTerm;
+        }
+        if (searchLanguage) {
+            document.getElementById('searchLanguage').value = searchLanguage;
+        }
+
+        if (searchTerm || searchLanguage) {
+            performSearch(searchTerm, searchLanguage);
+        }
+    });
+
+    async function performSearch(term, language) {
+        const query = new URLSearchParams({
+            term: term || '',
+            language: language || ''
+        });
+
+        try {
+            const response = await fetch(`/search?${query.toString()}`);
+            const data = await response.json();
+
+            const tableBody = document.getElementById('termsTableBody');
+            tableBody.innerHTML = '';
+
+            const columnSettings = JSON.parse(localStorage.getItem('columnSettings')) || [];
+            const tableHeaderRow = document.getElementById('tableHeaderRow');
+            tableHeaderRow.innerHTML = '';
+
+            const headers = [
+                'Term ID', 'Term Set ID', 'Term', 'Language', 'Term Type', 'Created By',
+                'Created Date', 'Updated By', 'Updated Date', 'Subject', 'Source', 'User',
+                'Attributes', 'Remark', 'URL', 'Context', 'Definition'
+            ];
+
+            headers.forEach((header, index) => {
+                if (columnSettings.includes(index)) {
+                    const th = document.createElement('th');
+                    th.textContent = header;
+                    tableHeaderRow.appendChild(th);
+                }
+            });
+
+            if (data.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="17">No results found</td></tr>';
+                document.getElementById('itemCount').textContent = '0 items found';
+                return;
+            }
+
+            data.forEach(term => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    ${columnSettings.includes(0) ? `<td data-column="0"><a href="/term_detail?term_id=${term.term_id}">${term.term_id}</a></td>` : ''}                    ${columnSettings.includes(1) ? `<td>${term.term_set_id}</td>` : ''}
+                    ${columnSettings.includes(2) ? `<td>${term.term_language_set.term || 'N/A'}</td>` : ''}
+                    ${columnSettings.includes(3) ? `<td>${term.term_language_set.language || 'N/A'}</td>` : ''}
+                    ${columnSettings.includes(4) ? `<td>${term.term_language_set.term_type || 'N/A'}</td>` : ''}
+                    ${columnSettings.includes(5) ? `<td>${term.term_language_set.creator_id || 'N/A'}</td>` : ''}
+                    ${columnSettings.includes(6) ? `<td>${new Date(term.term_language_set.creation_timestamp * 1000).toLocaleDateString() || 'N/A'}</td>` : ''}
+                    ${columnSettings.includes(7) ? `<td>${term.term_language_set.updater_id || 'N/A'}</td>` : ''}
+                    ${columnSettings.includes(8) ? `<td>${new Date(term.term_language_set.update_timestamp * 1000).toLocaleDateString() || 'N/A'}</td>` : ''}
+                    ${columnSettings.includes(9) ? `<td>${term.term_language_set.subject || 'N/A'}</td>` : ''}
+                    ${columnSettings.includes(10) ? `<td>${term.term_language_set.source || 'N/A'}</td>` : ''}
+                    ${columnSettings.includes(11) ? `<td>${term.term_language_set.user || 'N/A'}</td>` : ''}
+                    ${columnSettings.includes(12) ? `<td>${term.term_language_set.attributes || 'N/A'}</td>` : ''}
+                    ${columnSettings.includes(13) ? `<td>${term.term_language_set.remark || 'N/A'}</td>` : ''}
+                    ${columnSettings.includes(14) ? `<td>${term.term_language_set.url || 'N/A'}</td>` : ''}
+                    ${columnSettings.includes(15) ? `<td>${term.term_language_set.context || 'N/A'}</td>` : ''}
+                    ${columnSettings.includes(16) ? `<td>${term.term_language_set.definition || 'N/A'}</td>` : ''}
+                `;
+                tableBody.appendChild(row);
+            });
+
+            document.getElementById('itemCount').textContent = `${data.length} items found`;
+        } catch (error) {
+            console.error('Error fetching search results:', error);
+            alert('Failed to fetch search results. Please try again.');
+        }
+    }
+</script>
+{% endblock %}
+</body>
+
+</html>

@@ -1,0 +1,428 @@
+{% extends "base.html" %}
+
+{% block title %}Term Detail{% endblock %}
+
+{% block header %}Term Detail{% endblock %}
+
+{% block custom_styles %}
+<style>
+    .hidden {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="/terms" class="button">Terms</a>
+
+<div id="addTermSetFormContainer" class="hidden">
+    <h2>Add Term Set to This Term</h2>
+    <form id="addTermSetForm" action="/add_term_set" method="post" onsubmit="handleAddTermSet(event)">
+        <input type="hidden" name="existing_term_set_id" value="{{ term.term_set_id }}">
+
+        <label for="language">Language:</label>
+        <input type="text" id="language" name="term_language_set[language]">
+
+        <label for="term">Term:</label>
+        <input type="text" id="term" name="term_language_set[term]">
+
+        <label for="term_type">Term Type:</label>
+        <input type="text" id="term_type" name="term_language_set[term_type]">
+
+        <label for="creator_id">Created By ID:</label>
+        <input type="text" id="creator_id" name="term_language_set[creator_id]">
+
+        <label for="updater_id">Updated By ID:</label>
+        <input type="text" id="updater_id" name="term_language_set[updater_id]">
+
+        <label for="subject">Subject:</label>
+        <input type="text" id="subject" name="term_language_set[subject]">
+
+        <label for="source">Source:</label>
+        <input type="text" id="source" name="term_language_set[source]">
+
+        <label for="user">User:</label>
+        <input type="text" id="user" name="term_language_set[user]">
+
+        <label for="attributes">Attributes:</label>
+        <input type="text" id="attributes" name="term_language_set[attributes]">
+
+        <label for="remark">Remark:</label>
+        <input type="text" id="remark" name="term_language_set[remark]">
+
+        <label for="url">URL:</label>
+        <input type="text" id="url" name="term_language_set[url]">
+
+        <label for="context">Context:</label>
+        <input type="text" id="context" name="term_language_set[context]">
+
+        <label for="definition">Definition:</label>
+        <input type="text" id="definition" name="term_language_set[definition]">
+
+        <input type="submit" value="Save" class="button-save">
+    </form>
+</div>
+
+<div id="updateTermFormContainer" class="hidden">
+    <h2>Edit Term Details</h2>
+    <form id="updateTermForm" action="/update_term" method="post" onsubmit="handleUpdateTerm(event)">
+        <input type="hidden" name="term_id" value="{{ term.term_id }}">
+
+        <label for="language">Language:</label>
+        <input type="text" id="language" name="term_language_set[language]" value="{{ term.language_or_default() }}">
+
+        <label for="term">Term:</label>
+        <input type="text" id="term" name="term_language_set[term]" value="{{ term.term_or_default() }}">
+
+        <label for="term_type">Term Type:</label>
+        <input type="text" id="term_type" name="term_language_set[term_type]" value="{{ term.term_type_or_default() }}">
+
+        <label for="creator_id">Created By ID:</label>
+        <input type="text" id="creator_id" name="term_language_set[creator_id]"
+            value="{{ term.created_by_or_default() }}">
+
+        <label for="updater_id">Updated By ID:</label>
+        <input type="text" id="updater_id" name="term_language_set[updater_id]"
+            value="{{ term.updated_by_or_default() }}">
+
+        <label for="subject">Subject:</label>
+        <input type="text" id="subject" name="term_language_set[subject]" value="{{ term.subject_or_default() }}">
+
+        <label for="source">Source:</label>
+        <input type="text" id="source" name="term_language_set[source]" value="{{ term.source_or_default() }}">
+
+        <label for="user">User:</label>
+        <input type="text" id="user" name="term_language_set[user]" value="{{ term.user_or_default() }}">
+
+        <label for="attributes">Attributes:</label>
+        <input type="text" id="attributes" name="term_language_set[attributes]"
+            value="{{ term.attributes_or_default() }}">
+
+        <label for="remark">Remark:</label>
+        <input type="text" id="remark" name="term_language_set[remark]" value="{{ term.remark_or_default() }}">
+
+        <label for="url">URL:</label>
+        <input type="text" id="url" name="term_language_set[url]" value="{{ term.url_or_default() }}">
+
+        <label for="context">Context:</label>
+        <input type="text" id="context" name="term_language_set[context]" value="{{ term.context_or_default() }}">
+
+        <label for="definition">Definition:</label>
+        <input type="text" id="definition" name="term_language_set[definition]"
+            value="{{ term.definition_or_default() }}">
+
+        <input type="submit" value="Update" class="button-save">
+    </form>
+</div>
+
+<table class="term-detail-table">
+    <tr>
+        <td>Term ID</td>
+        <td>{{ term.term_id }}</td>
+    </tr>
+    <tr>
+        <td>Term Set ID</td>
+        <td>{{ term.term_set_id }}</td>
+    </tr>
+    <tr>
+        <td>Term</td>
+        <td>{{ term.term_or_default() }}</td>
+    </tr>
+    <tr>
+        <td>Language</td>
+        <td>{{ term.language_or_default() }}</td>
+    </tr>
+    <tr>
+        <td>Term Type</td>
+        <td>{{ term.term_type_or_default() }}</td>
+    </tr>
+    <tr>
+        <td>Created By</td>
+        <td>{{ term.created_by_or_default() }}</td>
+    </tr>
+    <tr>
+        <td>Created Date</td>
+        <td>{{ term.created_date_or_default() }}</td>
+    </tr>
+    <tr>
+        <td>Updated By</td>
+        <td>{{ term.updated_by_or_default() }}</td>
+    </tr>
+    <tr>
+        <td>Updated Date</td>
+        <td>{{ term.updated_date_or_default() }}</td>
+    </tr>
+    <tr>
+        <td>Subject</td>
+        <td>{{ term.subject_or_default() }}</td>
+    </tr>
+    <tr>
+        <td>Source</td>
+        <td>{{ term.source_or_default() }}</td>
+    </tr>
+    <tr>
+        <td>User</td>
+        <td>{{ term.user_or_default() }}</td>
+    </tr>
+    <tr>
+        <td>Attributes</td>
+        <td>{{ term.attributes_or_default() }}</td>
+    </tr>
+    <tr>
+        <td>Remark</td>
+        <td>{{ term.remark_or_default() }}</td>
+    </tr>
+    <tr>
+        <td>URL</td>
+        <td>{{ term.url_or_default() }}</td>
+    </tr>
+    <tr>
+        <td>Context</td>
+        <td>{{ term.context_or_default() }}</td>
+    </tr>
+    <tr>
+        <td>Definition</td>
+        <td>{{ term.definition_or_default() }}</td>
+    </tr>
+</table>
+
+<button id="showFormButton" class="button-style">Add Term Set to This Term</button>
+<button id="showUpdateFormButton" class="button-style">Edit Term Details</button>
+<button id="showRelatedTermsButton" class="button-style" data-term-set-id="{{ term.term_set_id }}">Show all terms from
+    this set</button>
+<button id="deleteTermButton" class="button-delete" data-term-id="{{ term.term_id }}">Delete Term</button>
+
+<div id="relatedTermsContainer" class="hidden">
+    <h3>Related Terms</h3>
+    <table id="termsTable" class="term-detail-table">
+        <thead>
+            <tr id="tableHeaderRow">
+                <!-- Headers will be populated dynamically based on user settings -->
+            </tr>
+        </thead>
+        <tbody id="termsTableBody">
+            <!-- Table rows will be inserted here dynamically -->
+        </tbody>
+    </table>
+    <p id="itemCount">0 items found</p>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('showFormButton').addEventListener('click', function () {
+            document.getElementById('addTermSetFormContainer').classList.toggle('hidden');
+        });
+
+        document.getElementById('showUpdateFormButton').addEventListener('click', function () {
+            document.getElementById('updateTermFormContainer').classList.toggle('hidden');
+        });
+
+        document.getElementById('deleteTermButton').addEventListener('click', async function () {
+            const termId = this.getAttribute('data-term-id');
+            await deleteTerm(termId);
+        });
+
+        document.getElementById('showRelatedTermsButton').addEventListener('click', async function () {
+            const termSetId = this.getAttribute('data-term-set-id');
+            await showRelatedTerms(termSetId);
+        });
+    });
+
+    async function handleAddTermSet(event) {
+        event.preventDefault();
+
+        const form = event.target;
+        const formData = new FormData(form);
+        const data = {};
+
+        formData.forEach((value, key) => {
+            const keys = key.split('[').map(k => k.replace(']', ''));
+            keys.reduce((acc, k, i) => {
+                if (i === keys.length - 1) {
+                    acc[k] = value;
+                } else {
+                    acc[k] = acc[k] || {};
+                }
+                return acc[k];
+            }, data);
+        });
+
+        if (data.existing_term_set_id) {
+            data.existing_term_set_id = parseInt(data.existing_term_set_id, 10);
+        }
+
+        if (data.term_language_set) {
+            if (data.term_language_set.creation_timestamp) {
+                data.term_language_set.creation_timestamp = parseInt(data.term_language_set.creation_timestamp, 10);
+            }
+            if (data.term_language_set.update_timestamp) {
+                data.term_language_set.update_timestamp = parseInt(data.term_language_set.update_timestamp, 10);
+            }
+        }
+
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+            });
+
+            if (response.ok) {
+                alert('Term set added successfully');
+                form.reset();
+                window.location.reload();
+            } else {
+                const errorText = await response.text();
+                alert(`Failed to add term set: ${errorText}`);
+            }
+        } catch (error) {
+            console.error('Error submitting form', error);
+            alert('Error submitting form');
+        }
+    }
+
+    async function handleUpdateTerm(event) {
+        event.preventDefault();
+
+        const form = event.target;
+        const formData = new FormData(form);
+        const data = {};
+
+        formData.forEach((value, key) => {
+            const keys = key.split('[').map(k => k.replace(']', ''));
+            keys.reduce((acc, k, i) => {
+                if (i === keys.length - 1) {
+                    acc[k] = value;
+                } else {
+                    acc[k] = acc[k] || {};
+                }
+                return acc[k];
+            }, data);
+        });
+
+        if (data.term_id) {
+            data.term_id = parseInt(data.term_id, 10);
+        }
+
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+            });
+
+            if (response.ok) {
+                alert('Term updated successfully');
+                form.reset();
+                window.location.reload();
+            } else {
+                const errorText = await response.text();
+                alert(`Failed to update term: ${errorText}`);
+            }
+        } catch (error) {
+            console.error('Error submitting form', error);
+            alert('Error submitting form');
+        }
+    }
+
+    async function deleteTerm(termId) {
+        const confirmation = confirm('Are you sure you want to delete this term?');
+
+        if (confirmation) {
+            try {
+                const termIdStr = encodeURIComponent(termId);
+
+                const response = await fetch(`/delete_term?term_id=${termIdStr}`, {
+                    method: 'DELETE',
+                });
+
+                if (response.ok) {
+                    alert('Term deleted successfully');
+                    window.location.href = '/terms';
+                } else {
+                    const errorText = await response.text();
+                    alert(`Failed to delete term: ${errorText}`);
+                }
+            } catch (error) {
+                console.error('Error deleting term', error);
+                alert('Error deleting term');
+            }
+        }
+    }
+
+    async function showRelatedTerms(termSetId) {
+        const query = new URLSearchParams({ term_set_id: termSetId });
+
+        try {
+            const response = await fetch(`/search_terms_by_term_set_id?${query.toString()}`);
+            if (!response.ok) throw new Error('Network response was not ok.');
+            const data = await response.json();
+
+            const tableBody = document.getElementById('termsTableBody');
+            const tableHeaderRow = document.getElementById('tableHeaderRow');
+
+            if (!tableBody || !tableHeaderRow) return;
+
+            tableBody.innerHTML = '';
+
+            const headers = [
+                'Term ID', 'Term Set ID', 'Term', 'Language', 'Term Type', 'Created By',
+                'Created Date', 'Updated By', 'Updated Date', 'Subject', 'Source', 'User',
+                'Attributes', 'Remark', 'URL', 'Context', 'Definition'
+            ];
+
+            tableHeaderRow.innerHTML = '';
+            headers.forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                tableHeaderRow.appendChild(th);
+            });
+
+            if (data.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="17">No related terms found</td></tr>';
+                document.getElementById('itemCount').textContent = '0 items found';
+                document.getElementById('relatedTermsContainer').classList.remove('hidden');
+                return;
+            }
+
+            data.forEach(term => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                <td><a href="/term_detail?term_id=${term.term_id}">${term.term_id}</a></td>
+                <td>${term.term_set_id}</td>
+                <td>${term.term_language_set.term || 'N/A'}</td>
+                <td>${term.term_language_set.language || 'N/A'}</td>
+                <td>${term.term_language_set.term_type || 'N/A'}</td>
+                <td>${term.term_language_set.creator_id || 'N/A'}</td>
+                <td>${new Date(term.term_language_set.creation_timestamp * 1000).toLocaleDateString() || 'N/A'}</td>
+                <td>${term.term_language_set.updater_id || 'N/A'}</td>
+                <td>${new Date(term.term_language_set.update_timestamp * 1000).toLocaleDateString() || 'N/A'}</td>
+                <td>${term.term_language_set.subject || 'N/A'}</td>
+                <td>${term.term_language_set.source || 'N/A'}</td>
+                <td>${term.term_language_set.user || 'N/A'}</td>
+                <td>${term.term_language_set.attributes || 'N/A'}</td>
+                <td>${term.term_language_set.remark || 'N/A'}</td>
+                <td>${term.term_language_set.url || 'N/A'}</td>
+                <td>${term.term_language_set.context || 'N/A'}</td>
+                <td>${term.term_language_set.definition || 'N/A'}</td>
+            `;
+                tableBody.appendChild(row);
+            });
+
+            document.getElementById('itemCount').textContent = `${data.length} items found`;
+            document.getElementById('relatedTermsContainer').classList.remove('hidden');
+        } catch (error) {
+            console.error('Error fetching related terms:', error);
+            alert('Failed to fetch related terms. Please try again.');
+        }
+    }
+
+</script>
+{% endblock %}
+</body>
+
+</html>

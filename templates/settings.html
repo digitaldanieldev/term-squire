@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Term squire{% endblock %}
+
+{% block header %}Settings{% endblock %}
+
+{% block content %}
+<a href="/terms" class="button">Terms</a>
+
+<h2>Column Visibility Settings</h2>
+<form id="settingsForm">
+    <h2>Column Visibility Settings</h2>
+    <label><input type="checkbox" name="columns" value="0" disabled checked> Term ID</label>
+    <label><input type="checkbox" name="columns" value="1" disabled checked> Term Set ID</label>
+    <label><input type="checkbox" name="columns" value="2" disabled checked> Term</label>
+    <label><input type="checkbox" name="columns" value="3"> Language</label>
+    <label><input type="checkbox" name="columns" value="4"> Term Type</label>
+    <label><input type="checkbox" name="columns" value="5"> Created By</label>
+    <label><input type="checkbox" name="columns" value="6"> Created Date</label>
+    <label><input type="checkbox" name="columns" value="7"> Updated By</label>
+    <label><input type="checkbox" name="columns" value="8"> Updated Date</label>
+    <label><input type="checkbox" name="columns" value="9"> Subject</label>
+    <label><input type="checkbox" name="columns" value="10"> Source</label>
+    <label><input type="checkbox" name="columns" value="11"> User</label>
+    <label><input type="checkbox" name="columns" value="12"> Attributes</label>
+    <label><input type="checkbox" name="columns" value="13"> Remark</label>
+    <label><input type="checkbox" name="columns" value="14"> URL</label>
+    <label><input type="checkbox" name="columns" value="15"> Context</label>
+    <label><input type="checkbox" name="columns" value="16"> Definition</label>
+    <br><br>
+
+    <h2>Font Settings</h2>
+    <label for="font-select">Select Font:</label>
+    <select id="font-select" name="font">
+        <option value="Arial, sans-serif">Arial</option>
+        <option value="'Courier New', Courier, monospace">Courier New</option>
+        <option value="Georgia, serif">Georgia</option>
+        <option value="'Times New Roman', Times, serif">Times New Roman</option>
+        <option value="Verdana, sans-serif">Verdana</option>
+    </select>
+    <br><br>
+
+    <label for="font-size-slider">Select Font Size:</label>
+    <input type="range" id="font-size-slider" name="fontSize" min="10" max="30" step="1" value="16">
+    <span id="font-size-value">16px</span>
+    <br><br>
+
+    <input type="submit" value="Save Settings" class="button-save">
+</form>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const form = document.getElementById('settingsForm');
+        const fontSelect = document.getElementById('font-select');
+        const fontSizeSlider = document.getElementById('font-size-slider');
+        const fontSizeValue = document.getElementById('font-size-value');
+
+        const storedFont = localStorage.getItem('fontSetting');
+        const storedFontSize = localStorage.getItem('fontSizeSetting');
+
+        if (storedFont) {
+            document.body.style.fontFamily = storedFont;
+            fontSelect.value = storedFont;
+        }
+
+        if (storedFontSize) {
+            document.body.style.fontSize = storedFontSize;
+            fontSizeSlider.value = parseInt(storedFontSize);
+            fontSizeValue.textContent = storedFontSize;
+        }
+
+        fontSizeSlider.addEventListener('input', () => {
+            const size = fontSizeSlider.value + 'px';
+            document.body.style.fontSize = size;
+            fontSizeValue.textContent = size;
+        });
+
+        const storedSettings = JSON.parse(localStorage.getItem('columnSettings'));
+        if (storedSettings) {
+            const checkboxes = form.querySelectorAll('input[type="checkbox"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = storedSettings.includes(parseInt(checkbox.value));
+            });
+        }
+
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+
+            const selectedColumns = Array.from(form.querySelectorAll('input[type="checkbox"]:checked'))
+                .map(checkbox => parseInt(checkbox.value));
+            localStorage.setItem('columnSettings', JSON.stringify(selectedColumns));
+
+            const selectedFont = fontSelect.value;
+            const selectedFontSize = fontSizeSlider.value + 'px';
+            localStorage.setItem('fontSetting', selectedFont);
+            localStorage.setItem('fontSizeSetting', selectedFontSize);
+
+            document.body.style.fontFamily = selectedFont;
+            document.body.style.fontSize = selectedFontSize;
+
+            alert('Settings saved.');
+        });
+    });
+</script>
+
+{% endblock %}
+</body>
+
+</html>
