@@ -7,8 +7,8 @@ To run Term-squire, download the appropriate binary for your operating system fr
 `term-squire [OPTIONS]`
 `term-squire -p 1234`
 
-Access Term-squire via your web browser at http://ip:port/terms. For local usage, this would be http://localhost:1234/terms.
-
+Access Term-squire via your web browser at http://ip:port/terms. For local usage, this would be 
+**`http://localhost:1234/terms.`**
 For a quick start, you can import example.mtf.
 
 ### Options:

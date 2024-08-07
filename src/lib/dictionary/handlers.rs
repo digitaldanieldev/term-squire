@@ -430,7 +430,7 @@ pub async fn handle_search_terms(Query(params): Query<SearchRequest>) -> impl In
         }
         Err(err) => {
             error!("Failed to search terms: {}", err);
-            Json(vec![]) // Or an appropriate error response
+            Json(vec![]) 
         }
     }
 }
