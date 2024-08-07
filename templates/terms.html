@@ -36,6 +36,24 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', () => {
+        function setDefaultSettings() {
+            const defaultFont = 'Arial, sans-serif';
+            const defaultFontSize = '16px';
+            const defaultColumns = [0, 1, 2];
+
+            if (!localStorage.getItem('fontSetting')) {
+                localStorage.setItem('fontSetting', defaultFont);
+            }
+            if (!localStorage.getItem('fontSizeSetting')) {
+                localStorage.setItem('fontSizeSetting', defaultFontSize);
+            }
+            if (!localStorage.getItem('columnSettings')) {
+                localStorage.setItem('columnSettings', JSON.stringify(defaultColumns));
+            }
+        }
+
+        setDefaultSettings();
+
         document.getElementById('searchForm').addEventListener('submit', async (event) => {
             event.preventDefault(); 
 
@@ -101,7 +119,8 @@
             data.forEach(term => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    ${columnSettings.includes(0) ? `<td data-column="0"><a href="/term_detail?term_id=${term.term_id}">${term.term_id}</a></td>` : ''}                    ${columnSettings.includes(1) ? `<td>${term.term_set_id}</td>` : ''}
+                    ${columnSettings.includes(0) ? `<td data-column="0"><a href="/term_detail?term_id=${term.term_id}">${term.term_id}</a></td>` : ''}                    
+                    ${columnSettings.includes(1) ? `<td>${term.term_set_id}</td>` : ''}
                     ${columnSettings.includes(2) ? `<td>${term.term_language_set.term || 'N/A'}</td>` : ''}
                     ${columnSettings.includes(3) ? `<td>${term.term_language_set.language || 'N/A'}</td>` : ''}
                     ${columnSettings.includes(4) ? `<td>${term.term_language_set.term_type || 'N/A'}</td>` : ''}

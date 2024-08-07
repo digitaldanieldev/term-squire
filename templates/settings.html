@@ -55,33 +55,45 @@
         const fontSizeSlider = document.getElementById('font-size-slider');
         const fontSizeValue = document.getElementById('font-size-value');
 
+        const defaultFont = 'Arial, sans-serif';
+        const defaultFontSize = '16px';
+        const defaultColumns = [0, 1, 2];
+
+        function setDefaultSettings() {
+            if (!localStorage.getItem('fontSetting')) {
+                localStorage.setItem('fontSetting', defaultFont);
+            }
+            if (!localStorage.getItem('fontSizeSetting')) {
+                localStorage.setItem('fontSizeSetting', defaultFontSize);
+            }
+            if (!localStorage.getItem('columnSettings')) {
+                localStorage.setItem('columnSettings', JSON.stringify(defaultColumns));
+            }
+        }
+
+        setDefaultSettings();
+
         const storedFont = localStorage.getItem('fontSetting');
         const storedFontSize = localStorage.getItem('fontSizeSetting');
+        const storedSettings = JSON.parse(localStorage.getItem('columnSettings'));
 
-        if (storedFont) {
-            document.body.style.fontFamily = storedFont;
-            fontSelect.value = storedFont;
-        }
+        document.body.style.fontFamily = storedFont;
+        fontSelect.value = storedFont;
 
-        if (storedFontSize) {
-            document.body.style.fontSize = storedFontSize;
-            fontSizeSlider.value = parseInt(storedFontSize);
-            fontSizeValue.textContent = storedFontSize;
-        }
+        document.body.style.fontSize = storedFontSize;
+        fontSizeSlider.value = parseInt(storedFontSize);
+        fontSizeValue.textContent = storedFontSize;
+
+        const checkboxes = form.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = storedSettings.includes(parseInt(checkbox.value));
+        });
 
         fontSizeSlider.addEventListener('input', () => {
             const size = fontSizeSlider.value + 'px';
             document.body.style.fontSize = size;
             fontSizeValue.textContent = size;
         });
-
-        const storedSettings = JSON.parse(localStorage.getItem('columnSettings'));
-        if (storedSettings) {
-            const checkboxes = form.querySelectorAll('input[type="checkbox"]');
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = storedSettings.includes(parseInt(checkbox.value));
-            });
-        }
 
         form.addEventListener('submit', (event) => {
             event.preventDefault();
