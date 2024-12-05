@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Database Management{% endblock %}
+
+{% block header %}Manage Database{% endblock %}
+
+{% block content %}
+<a href="/terms" class="button">Terms</a>
+<a href="/settings">Settings</a>
+
+<h2>Download or Upload the Database</h2>
+
+<!-- Button to download the database -->
+<a href="/download_db_file" class="button" download>Download Database</a>
+
+<!-- Form to upload a database -->
+<h3>Upload Database</h3>
+<form id="uploadDbForm" action="/upload_db_file" method="post" enctype="multipart/form-data" onsubmit="handleUpload(event)">
+  <label for="dbFile">Choose Database File:</label>
+  <input type="file" id="dbFile" name="file" accept=".db" required>
+
+  <input type="submit" value="Upload Database" class="button-save">
+</form>
+
+<script>
+  async function handleUpload(event) {
+    event.preventDefault();
+
+    const form = event.target;
+    const formData = new FormData(form);
+
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (response.ok) {
+        alert("Database uploaded successfully!");
+        form.reset();
+      } else {
+        const errorText = await response.text();
+        alert(`Failed to upload database: ${errorText}`);
+      }
+    } catch (error) {
+      console.error("Error uploading file", error);
+      alert("Error uploading file");
+    }
+  }
+</script>
+{% endblock %}
+</body>
+
+</html>

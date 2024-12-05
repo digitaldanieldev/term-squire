@@ -2,11 +2,10 @@ use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, post};
 use axum::Router;
 use clap::{arg, command, Parser};
+use term_squire::constants::CURRENT_DB_NAME;
 use term_squire::dictionary::{database::*, handlers::*};
 use term_squire::logging::*;
 use tracing::info;
-
-const CURRENT_DB_NAME: &str = "term-squire.db";
 
 /// simple dictionary
 #[derive(Parser, Debug)]
@@ -27,7 +26,9 @@ async fn main() {
 
     let app = Router::new()
         .route("/add_term_set", post(handle_add_term_set))
+        .route("/database_management", get(handle_database_management))
         .route("/delete_term", delete(handle_delete_term))
+        .route("/download_db_file", get(handle_download_db_file))
         .route("/import_dictionary", post(handle_import_dictionary_data))
         .route("/import_form", get(handle_import_form))
         .route("/insert_form", get(handle_insert_form))
@@ -38,6 +39,7 @@ async fn main() {
         .route("/terms", get(handle_terms))
         .route("/term_detail", get(handle_get_term_details))
         .route("/update_term", post(handle_update_term))
+        .route("/upload_db_file", post(handle_upload_db_file))
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
         .into_make_service();
 

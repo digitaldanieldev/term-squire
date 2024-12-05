@@ -1,9 +1,8 @@
+use crate::constants::CURRENT_DB_NAME;
 use crate::dictionary::database::*;
 use crate::import::parse::*;
 use rusqlite::Result;
 use tracing::{error, info};
-
-const CURRENT_DB_NAME: &str = "term-squire.db";
 
 pub fn create_term_to_insert(term: &TermLanguageSet) -> TermLanguageSet {
     TermLanguageSet {

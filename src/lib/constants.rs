@@ -1,0 +1,1 @@
+pub const CURRENT_DB_NAME: &str = "term-squire.db";

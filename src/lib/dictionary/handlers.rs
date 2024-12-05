@@ -1,32 +1,33 @@
 use askama::Template;
 use axum::{
     extract::{Multipart, Query},
-    http::StatusCode,
-    response::{Html, IntoResponse, Json},
+    http::{HeaderValue, StatusCode},
+    response::{Html, IntoResponse, Json, Response},
     Form,
 };
 use lazy_static::lazy_static;
 use serde::Deserialize;
-use std::{collections::HashMap, path::PathBuf, sync::RwLock};
-use tokio::{fs::File, io::AsyncWriteExt};
+use std::{collections::HashMap, path::{Path, PathBuf}, sync::RwLock};
+use tokio::{fs::File, io::{AsyncReadExt, AsyncWriteExt}};
 use tracing::{error, info};
 
 use crate::{
+    constants::CURRENT_DB_NAME,
     dictionary::database::{
         add_term, add_term_to_term_set, current_epoch, delete_term, extract_and_insert_unique_values, get_all_terms, get_term_by_id, search_terms, search_terms_by_term_set_id, update_term, TermsList
     },
     import::{process::import_dictionary_data, parse::TermLanguageSet},
 };
 
+// cache to store search results.
 lazy_static! {
     static ref SEARCH_CACHE: RwLock<HashMap<String, Vec<TermsList>>> = RwLock::new(HashMap::new());
 }
 
+// clears the search cache
 pub fn clear_cache() {
     SEARCH_CACHE.write().unwrap().clear();
 }
-
-const CURRENT_DB_NAME: &str = "term-squire.db";
 
 // add term set to term
 #[derive(Debug, Deserialize)]
@@ -397,6 +398,8 @@ pub struct SearchResultsTemplate {
     pub count: usize,
 }
 
+
+
 pub async fn handle_search_terms(Query(params): Query<SearchRequest>) -> impl IntoResponse {
     let db_name = CURRENT_DB_NAME;
     let term_select = params.term.clone();
@@ -491,4 +494,151 @@ pub async fn handle_update_term(Json(payload): Json<UpdateTermRequest>) -> impl 
                 .into_response()
         }
     }
+}
+
+// manage database
+#[derive(Template)]
+#[template(path = "database_management.html")]
+struct DatabaseManagementTemplate;
+
+pub async fn handle_database_management() -> Html<String> {
+    info!("Serving database management form.");
+    let template = DatabaseManagementTemplate;
+    Html(
+        template
+            .render()
+            .unwrap_or_else(|_| "Template rendering error".to_string()),
+    )
+}
+
+// download the database
+pub async fn handle_download_db_file() -> impl IntoResponse {
+    let db_file_path = CURRENT_DB_NAME;
+
+    if !Path::new(db_file_path).exists() {
+        error!("Database file not found: {}", db_file_path);
+        return (StatusCode::NOT_FOUND, "Database file not found").into_response();
+    }
+
+    info!("Sending database file: {}", db_file_path);
+
+    match File::open(db_file_path).await {
+        Ok(mut file) => {
+            let mut buffer = Vec::new();
+            if let Err(err) = file.read_to_end(&mut buffer).await {
+                error!("Failed to read the database file: {}", err);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to read the database file: {}", err),
+                )
+                .into_response();
+            }
+
+            let file_name = Path::new(db_file_path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(CURRENT_DB_NAME);
+
+            let mut response = Response::new(buffer.into());
+
+            response.headers_mut().insert(
+                axum::http::header::CONTENT_TYPE,
+                HeaderValue::from_static("application/octet-stream"),
+            );
+
+            response.headers_mut().insert(
+                axum::http::header::CONTENT_DISPOSITION,
+                HeaderValue::from_str(&format!("attachment; filename=\"{}\"", file_name)).unwrap(),
+            );
+
+            info!("Database file {} sent successfully.", db_file_path);
+
+            response
+        }
+        Err(err) => {
+            error!("Failed to open the database file: {}", err);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to open the database file: {}", err),
+            )
+                .into_response()
+        }
+    }
+}
+
+// upload database
+pub async fn handle_upload_db_file(mut multipart: Multipart) -> impl IntoResponse {
+    let db_file_path = CURRENT_DB_NAME;
+    info!("Starting database file upload.");
+
+    while let Some(field) = multipart.next_field().await.unwrap_or(None) {
+        let file_name = field.file_name().unwrap_or("uploaded_file").to_string();
+        let content_type = field.content_type().unwrap_or("unknown");
+
+        if content_type != "application/octet-stream" && !file_name.ends_with(".db") {
+            error!("Invalid file type: {}. Only .db files are accepted.", content_type);
+            return (
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Invalid file type: {}. Only .db files are accepted.",
+                    content_type
+                ),
+            )
+                .into_response();
+        }
+
+        let data = match field.bytes().await {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                error!("Failed to read uploaded file: {}", err);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to read uploaded file: {}", err),
+                )
+                    .into_response();
+            }
+        };
+
+        info!("Writing uploaded file to path: {}", db_file_path);
+
+        match File::create(db_file_path).await {
+            Ok(mut file) => {
+                if let Err(err) = file.write_all(&data).await {
+                    error!("Failed to write to the database file: {}", err);
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to write to the database file: {}", err),
+                    )
+                        .into_response();
+                }
+            }
+            Err(err) => {
+                error!("Failed to create the database file: {}", err);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to create the database file: {}", err),
+                )
+                    .into_response();
+            }
+        }
+
+        info!("Database file uploaded successfully: {}", db_file_path);
+
+        // Clear cache after uploading the database
+        clear_cache();
+        info!("Cache cleared after uploading the database.");
+
+        return (
+            StatusCode::OK,
+            format!("Successfully uploaded and saved as '{}'", db_file_path),
+        )
+            .into_response();
+    }
+
+    error!("No file found in the upload request");
+    (
+        StatusCode::BAD_REQUEST,
+        "No file found in the upload request".to_string(),
+    )
+        .into_response()
 }

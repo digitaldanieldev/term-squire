@@ -6,9 +6,10 @@
 
 {% block content %}
 <a href="/terms" class="button">Terms</a>
+<a href="/settings">Settings</a>
 
 <h2>Import Dictionary File</h2>
-
+Import your TermStar MARTIF (.mtf) terminology database here.
 <form id="importDictionaryForm" action="/import_dictionary" method="post" enctype="multipart/form-data"
     onsubmit="handleSubmit(event)">
     <label for="dictionaryFile">Select dictionary file:</label>
