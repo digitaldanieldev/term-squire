@@ -37,6 +37,7 @@ jobs:
 
             # Download the latest binary and copy it into the term-squire directory
             cd /media/1000gb/dockerfiles/term-squire-nginx/term-squire
+            rm term-squire
             wget ${binary_url} -O term-squire
 
             # Make the binary executable
