@@ -35,14 +35,14 @@ jobs:
             binary_url="http://192.168.178.107:3000/daniel/term-squire/releases/download/${latest_release}/term-squire"
             echo "Downloading the latest binary from ${binary_url}"
 
-            # Download the latest binary
-            wget ${binary_url} -O term-squire
+            # Download the latest binary and copy it into the term-squire directory
+            wget ${binary_url} -O term-squire/term-squire
 
             # Make the binary executable
-            chmod +x term-squire
+            chmod +x term-squire/term-squire
 
             # Copy the binary to the target directory
-            cp term-squire /media/1000gb/dockerfiles/term-squire-nginx/term-squire/
+            #cp term-squire /media/1000gb/dockerfiles/term-squire-nginx/term-squire/
 
             # Run docker-compose up to restart the containers
             docker-compose up -d
