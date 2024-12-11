@@ -16,9 +16,9 @@ jobs:
       - name: Set up SSH
         uses: appleboy/ssh-action@v0.1.5
         with:
-          host: golem-one  # The hostname or IP address of the server
-          username: gitearunner  # The user to SSH into
-          key: ${{ secrets.SSH_PRIVATE_KEY }}  # Private SSH key for authentication (set up in Gitea secrets)
+          host: golem-one 
+          username: gitearunner 
+          key: ${{ secrets.GOLEM_ONE_GITEA_RUNNER }}
           port: 22  # The SSH port (default is 22)
           script: |
             # Navigate to the Docker project directory
