@@ -42,7 +42,7 @@ jobs:
             chmod +x term-squire
 
             # Copy the binary to the target directory
-            cp term-squire /media/1000gb/dockerfiles/term-squire-nginx/term-squire
+            cp term-squire /media/1000gb/dockerfiles/term-squire-nginx/term-squire/
 
             # Run docker-compose up to restart the containers
             docker-compose up -d
