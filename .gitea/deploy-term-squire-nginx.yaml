@@ -1,0 +1,51 @@
+name: Deploy Term Squire Nginx
+
+on:
+  push:
+    branches:
+      - main  # Change this to the branch you want to trigger the deployment on
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: golem-one  # The hostname or IP address of the server
+          username: gitearunner  # The user to SSH into
+          key: ${{ secrets.SSH_PRIVATE_KEY }}  # Private SSH key for authentication (set up in Gitea secrets)
+          port: 22  # The SSH port (default is 22)
+          script: |
+            # Navigate to the Docker project directory
+            cd /media/1000gb/dockerfiles/term-squire-nginx
+
+            # Stop and remove Docker containers
+            docker-compose down
+
+            # Fetch the latest release from Gitea API
+            echo "Fetching the latest release from Gitea API..."
+            latest_release=$(curl -s "http://192.168.178.107:3000/api/v1/repos/daniel/term-squire/releases" | jq -r '.[0].tag_name')
+
+            # Construct the download URL for the latest release binary
+            binary_url="http://192.168.178.107:3000/daniel/term-squire/releases/download/${latest_release}/term-squire"
+            echo "Downloading the latest binary from ${binary_url}"
+
+            # Download the latest binary
+            wget ${binary_url} -O term-squire
+
+            # Make the binary executable
+            chmod +x term-squire
+
+            # Copy the binary to the target directory
+            cp term-squire /media/1000gb/dockerfiles/term-squire-nginx/term-squire
+
+            # Run docker-compose up to restart the containers
+            docker-compose up -d
+
+            echo "Deployment complete!"
+
