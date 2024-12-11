@@ -3,7 +3,7 @@ name: Deploy Term Squire Nginx
 on:
   push:
     branches:
-      - main  # Change this to the branch you want to trigger the deployment on
+      - main 
 
 jobs:
   deploy:
