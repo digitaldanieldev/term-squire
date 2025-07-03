@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-askama = "0.12.1"
-axum = { version = "0.7.9", features = ["multipart"] }
+askama = "0.14.0"
+axum = { version = "0.8.4", features = ["multipart"] }
 chrono = "0.4.38"
 clap = { version = "4.5.22", features = ["derive"] }
 display_derive = "0.0.0"
@@ -16,7 +16,7 @@ filters = "0.4.0"
 futures = "0.3.31"
 lazy_static = "1.5.0"
 rust-fuzzy-search = "0.1.1"
-rusqlite = { version = "0.32.1", features = ["bundled"] }
+rusqlite = { version = "0.36.0", features = ["bundled"] }
 serde = { version = "1.0.215", features = ["derive"] }
 serde_derive = "1.0.215"
 serde_json = "1.0.133"
