@@ -2,6 +2,7 @@ use crate::import::parse::TermLanguageSet;
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tracing::info;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -105,6 +106,13 @@ impl TermsList {
             .as_deref()
             .unwrap_or("No Definition")
     }
+}
+
+use axum::Extension;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DbName {
+    pub name: String,
 }
 
 pub fn add_term(db_name: &str, term_set: &TermLanguageSet) -> Result<(), rusqlite::Error> {

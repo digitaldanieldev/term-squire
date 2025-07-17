@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 askama = "0.14.0"
-axum = { version = "0.8.4", features = ["multipart"] }
+axum = { version = "0.8.4", features = ["macros","multipart"] }
 chrono = "0.4.38"
 clap = { version = "4.5.22", features = ["derive"] }
 display_derive = "0.0.0"

@@ -1,22 +1,35 @@
 use askama::Template;
 use axum::{
-    extract::{Multipart, Query},
+    debug_handler,
+    extract::{Json, State},
     http::{HeaderValue, StatusCode},
-    response::{Html, IntoResponse, Json, Response},
+    response::{Html, IntoResponse, Json as AxumJson, Response},
+};
+use axum::{
+    extract::{Multipart, Query},
     Form,
 };
 use lazy_static::lazy_static;
-use serde::Deserialize;
-use std::{collections::HashMap, path::{Path, PathBuf}, sync::RwLock};
-use tokio::{fs::File, io::{AsyncReadExt, AsyncWriteExt}};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::RwLock,
+};
+use tokio::{
+    fs::File,
+    io::{AsyncReadExt, AsyncWriteExt},
+};
 use tracing::{error, info};
 
 use crate::{
-    constants::CURRENT_DB_NAME,
     dictionary::database::{
-        add_term, add_term_to_term_set, current_epoch, delete_term, extract_and_insert_unique_values, get_all_terms, get_term_by_id, search_terms, search_terms_by_term_set_id, update_term, TermsList
+        add_term, add_term_to_term_set, current_epoch, delete_term,
+        extract_and_insert_unique_values, get_all_terms, get_term_by_id, search_terms,
+        search_terms_by_term_set_id, update_term, DbName, TermsList,
     },
-    import::{process::import_dictionary_data, parse::TermLanguageSet},
+    import::{parse::TermLanguageSet, process::import_dictionary_data},
 };
 
 // cache to store search results.
@@ -36,8 +49,11 @@ pub struct AddTermSetRequest {
     term_language_set: TermLanguageSet,
 }
 
-pub async fn handle_add_term_set(Json(payload): Json<AddTermSetRequest>) -> impl IntoResponse {
-    let db_name = CURRENT_DB_NAME;
+#[debug_handler]
+pub async fn handle_add_term_set(
+    State(db_name): State<Arc<DbName>>,
+    Json(payload): Json<AddTermSetRequest>,
+) -> impl IntoResponse {
     let existing_term_set_id = payload.existing_term_set_id;
     let mut term_set = payload.term_language_set;
 
@@ -50,11 +66,13 @@ pub async fn handle_add_term_set(Json(payload): Json<AddTermSetRequest>) -> impl
         existing_term_set_id
     );
 
-    match add_term_to_term_set(db_name, existing_term_set_id, &term_set) {
+    let db_name_str = &db_name.name;
+
+    match add_term_to_term_set(db_name_str, existing_term_set_id, &term_set) {
         Ok(_) => {
             info!("Term set added successfully.");
             clear_cache();
-            let _unique_values_result = extract_and_insert_unique_values(db_name);
+            let _unique_values_result = extract_and_insert_unique_values(db_name_str);
             (
                 StatusCode::OK,
                 "Term set added to existing term successfully",
@@ -62,10 +80,10 @@ pub async fn handle_add_term_set(Json(payload): Json<AddTermSetRequest>) -> impl
                 .into_response()
         }
         Err(err) => {
-            error!("Failed to add term set: {}", err);
+            error!("Failed to add term set: {}", &err);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to add term set to existing term: {}", err),
+                format!("Failed to add term set to existing term: {err}"),
             )
                 .into_response()
         }
@@ -78,17 +96,21 @@ pub struct DeleteTermRequest {
     term_id: i32,
 }
 
-pub async fn handle_delete_term(Query(params): Query<DeleteTermRequest>) -> impl IntoResponse {
-    let db_name = CURRENT_DB_NAME;
+#[debug_handler]
+pub async fn handle_delete_term(
+    State(db_name): State<Arc<DbName>>,
+    Query(params): Query<DeleteTermRequest>,
+) -> impl IntoResponse {
+    let db_name_str = &db_name.name;
     let term_id = params.term_id;
 
     info!("Deleting term with ID: {}", term_id);
 
-    match delete_term(db_name, term_id) {
+    match delete_term(&db_name_str, term_id) {
         Ok(_) => {
             info!("Term deleted successfully.");
             clear_cache();
-            let _unique_values_result = extract_and_insert_unique_values(db_name);
+            let _unique_values_result = extract_and_insert_unique_values(&db_name_str);
             (StatusCode::OK, "Term deleted successfully").into_response()
         }
         Err(rusqlite::Error::ExecuteReturnedResults) => {
@@ -103,7 +125,7 @@ pub async fn handle_delete_term(Query(params): Query<DeleteTermRequest>) -> impl
             error!("Failed to delete term: {}", err);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to delete term: {}", err),
+                format!("Failed to delete term: {err}"),
             )
                 .into_response()
         }
@@ -116,8 +138,11 @@ pub struct InsertTermRequest {
     term_language_set: TermLanguageSet,
 }
 
-pub async fn handle_insert_term(Json(payload): Json<InsertTermRequest>) -> impl IntoResponse {
-    let db_name = CURRENT_DB_NAME;
+pub async fn handle_insert_term(
+    State(db_name): State<Arc<DbName>>,
+    Json(payload): Json<InsertTermRequest>,
+) -> impl IntoResponse {
+    let db_name_str = &db_name.name;
     let mut term_set = payload.term_language_set;
 
     let now = current_epoch();
@@ -126,18 +151,18 @@ pub async fn handle_insert_term(Json(payload): Json<InsertTermRequest>) -> impl 
 
     info!("Inserting new term into database.");
 
-    match add_term(db_name, &term_set) {
+    match add_term(&db_name_str, &term_set) {
         Ok(_) => {
             info!("Term inserted successfully.");
             clear_cache();
-            let _unique_values_result = extract_and_insert_unique_values(db_name);
+            let _unique_values_result = extract_and_insert_unique_values(&db_name_str);
             (StatusCode::OK, "Term inserted successfully").into_response()
         }
         Err(err) => {
             error!("Failed to insert term: {}", err);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to insert term: {}", err),
+                format!("Failed to insert term: {err}"),
             )
                 .into_response()
         }
@@ -145,7 +170,10 @@ pub async fn handle_insert_term(Json(payload): Json<InsertTermRequest>) -> impl 
 }
 
 // import dictionary data
-pub async fn handle_import_dictionary_data(mut multipart: Multipart) -> impl IntoResponse {
+pub async fn handle_import_dictionary_data(
+    State(db_name): State<Arc<DbName>>,
+    mut multipart: Multipart,
+) -> impl IntoResponse {
     while let Some(mut field) = match multipart.next_field().await {
         Ok(Some(field)) => Some(field),
         Ok(None) => None,
@@ -153,7 +181,7 @@ pub async fn handle_import_dictionary_data(mut multipart: Multipart) -> impl Int
             error!("Failed to read field: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to read field: {}", err),
+                format!("Failed to read field: {err}"),
             )
                 .into_response();
         }
@@ -182,7 +210,7 @@ pub async fn handle_import_dictionary_data(mut multipart: Multipart) -> impl Int
                     error!("Failed to create file: {}", err);
                     return (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to create file: {}", err),
+                        format!("Failed to create file: {err}"),
                     )
                         .into_response();
                 }
@@ -198,7 +226,7 @@ pub async fn handle_import_dictionary_data(mut multipart: Multipart) -> impl Int
                     error!("Failed to read chunk: {}", err);
                     return (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to read chunk: {}", err),
+                        format!("Failed to read chunk: {err}"),
                     )
                         .into_response();
                 }
@@ -208,7 +236,7 @@ pub async fn handle_import_dictionary_data(mut multipart: Multipart) -> impl Int
                     error!("Failed to write to file: {}", err);
                     return (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to write to file: {}", err),
+                        format!("Failed to write to file: {err}"),
                     )
                         .into_response();
                 }
@@ -218,7 +246,7 @@ pub async fn handle_import_dictionary_data(mut multipart: Multipart) -> impl Int
                 error!("Failed to flush file: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Failed to flush file: {}", err),
+                    format!("Failed to flush file: {err}"),
                 )
                     .into_response();
             }
@@ -229,7 +257,7 @@ pub async fn handle_import_dictionary_data(mut multipart: Multipart) -> impl Int
                 error!("Failed to import dictionary: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Failed to import dictionary: {}", err),
+                    format!("Failed to import dictionary: {err}"),
                 )
                     .into_response();
             }
@@ -323,12 +351,12 @@ pub struct TermsTemplate {
     pub terms: Vec<TermsList>,
 }
 
-pub async fn handle_terms() -> Html<String> {
-    let db_name = CURRENT_DB_NAME;
+pub async fn handle_terms(State(db_name): State<Arc<DbName>>) -> Html<String> {
+    let db_name_str = &db_name.name;
 
     info!("Fetching terms.");
 
-    match get_all_terms(db_name) {
+    match get_all_terms(&db_name_str) {
         Ok(terms) => {
             info!("Terms fetched successfully.");
             let template = TermsTemplate { terms };
@@ -340,7 +368,7 @@ pub async fn handle_terms() -> Html<String> {
         }
         Err(err) => {
             error!("Failed to get data: {}", err);
-            Html(format!("<h1>Failed to get data: {}</h1>", err))
+            Html(format!("<h1>Failed to get data: {err}</h1>"))
         }
     }
 }
@@ -357,13 +385,16 @@ pub struct TermDetailTemplate {
     pub term: TermsList,
 }
 
-pub async fn handle_get_term_details(Query(params): Query<TermDetailRequest>) -> impl IntoResponse {
-    let db_name = CURRENT_DB_NAME;
+pub async fn handle_get_term_details(
+    State(db_name): State<Arc<DbName>>,
+    Query(params): Query<TermDetailRequest>,
+) -> impl IntoResponse {
+    let db_name_str = &db_name.name;
     let term_id = params.term_id;
 
     info!("Fetching details for term ID: {}", term_id);
 
-    match get_term_by_id(db_name, term_id) {
+    match get_term_by_id(&db_name_str, term_id) {
         Ok(Some(term)) => {
             info!("Term details fetched successfully.");
             let template = TermDetailTemplate { term };
@@ -379,7 +410,7 @@ pub async fn handle_get_term_details(Query(params): Query<TermDetailRequest>) ->
         }
         Err(err) => {
             error!("Failed to get term details: {}", err);
-            Html(format!("<h1>Failed to get term details: {}</h1>", err))
+            Html(format!("<h1>Failed to get term details: {err}</h1>"))
         }
     }
 }
@@ -398,13 +429,14 @@ pub struct SearchResultsTemplate {
     pub count: usize,
 }
 
-
-
-pub async fn handle_search_terms(Query(params): Query<SearchRequest>) -> impl IntoResponse {
-    let db_name = CURRENT_DB_NAME;
+pub async fn handle_search_terms(
+    State(db_name): State<Arc<DbName>>,
+    Query(params): Query<SearchRequest>,
+) -> impl IntoResponse {
+    let db_name_str = &db_name.name;
     let term_select = params.term.clone();
     let language_select = params.language.clone();
-    let cache_key = format!("{}:{}", term_select, language_select);
+    let cache_key = format!("{term_select}:{language_select}");
 
     // Check the cache first
     if let Some(cached_results) = SEARCH_CACHE.read().unwrap().get(&cache_key) {
@@ -421,7 +453,7 @@ pub async fn handle_search_terms(Query(params): Query<SearchRequest>) -> impl In
     );
 
     // Perform the database search if cache miss
-    match search_terms(db_name, &term_select, &language_select) {
+    match search_terms(&db_name_str, &term_select, &language_select) {
         Ok(terms) => {
             info!("Search completed successfully.");
             // Update the cache
@@ -433,7 +465,7 @@ pub async fn handle_search_terms(Query(params): Query<SearchRequest>) -> impl In
         }
         Err(err) => {
             error!("Failed to search terms: {}", err);
-            Json(vec![]) 
+            Json(vec![])
         }
     }
 }
@@ -443,20 +475,23 @@ pub struct SearchByTermSetIdRequest {
     term_set_id: i32,
 }
 
-pub async fn handle_search_terms_by_term_set_id(Query(params): Query<SearchByTermSetIdRequest>) -> impl IntoResponse {
-    let db_name = CURRENT_DB_NAME;
+pub async fn handle_search_terms_by_term_set_id(
+    State(db_name): State<Arc<DbName>>,
+    Query(params): Query<SearchByTermSetIdRequest>,
+) -> impl IntoResponse {
+    let db_name_str = &db_name.name;
     let term_set_id = params.term_set_id;
 
     info!("Searching for terms with term_set_id: {}", term_set_id);
 
-    match search_terms_by_term_set_id(db_name, term_set_id) {
+    match search_terms_by_term_set_id(&db_name_str, term_set_id) {
         Ok(terms) => {
             info!("Search completed successfully.");
             Json(terms)
         }
         Err(err) => {
             error!("Failed to search terms: {}", err);
-            Json(vec![]) 
+            Json(vec![])
         }
     }
 }
@@ -468,8 +503,11 @@ pub struct UpdateTermRequest {
     term_language_set: TermLanguageSet,
 }
 
-pub async fn handle_update_term(Json(payload): Json<UpdateTermRequest>) -> impl IntoResponse {
-    let db_name = CURRENT_DB_NAME;
+pub async fn handle_update_term(
+    State(db_name): State<Arc<DbName>>,
+    Json(payload): Json<UpdateTermRequest>,
+) -> impl IntoResponse {
+    let db_name_str = &db_name.name;
     let term_id = payload.term_id;
     let mut term_set = payload.term_language_set;
 
@@ -478,18 +516,18 @@ pub async fn handle_update_term(Json(payload): Json<UpdateTermRequest>) -> impl 
 
     info!("Updating term ID: {}", term_id);
 
-    match update_term(db_name, term_id, &term_set) {
+    match update_term(&db_name_str, term_id, &term_set) {
         Ok(_) => {
             info!("Term updated successfully.");
             clear_cache();
-            let _unique_values_result = extract_and_insert_unique_values(db_name);
+            let _unique_values_result = extract_and_insert_unique_values(&db_name_str);
             (StatusCode::OK, "Term updated successfully").into_response()
         }
         Err(err) => {
             error!("Failed to update term: {}", err);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to update term: {}", err),
+                format!("Failed to update term: {err}"),
             )
                 .into_response()
         }
@@ -512,8 +550,8 @@ pub async fn handle_database_management() -> Html<String> {
 }
 
 // download the database
-pub async fn handle_download_db_file() -> impl IntoResponse {
-    let db_file_path = CURRENT_DB_NAME;
+pub async fn handle_download_db_file(State(db_name): State<Arc<DbName>>) -> impl IntoResponse {
+    let db_file_path = &db_name.name;
 
     if !Path::new(db_file_path).exists() {
         error!("Database file not found: {}", db_file_path);
@@ -529,15 +567,15 @@ pub async fn handle_download_db_file() -> impl IntoResponse {
                 error!("Failed to read the database file: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Failed to read the database file: {}", err),
+                    format!("Failed to read the database file: {err}"),
                 )
-                .into_response();
+                    .into_response();
             }
 
             let file_name = Path::new(db_file_path)
                 .file_name()
                 .and_then(|name| name.to_str())
-                .unwrap_or(CURRENT_DB_NAME);
+                .unwrap_or(db_file_path);
 
             let mut response = Response::new(buffer.into());
 
@@ -548,7 +586,7 @@ pub async fn handle_download_db_file() -> impl IntoResponse {
 
             response.headers_mut().insert(
                 axum::http::header::CONTENT_DISPOSITION,
-                HeaderValue::from_str(&format!("attachment; filename=\"{}\"", file_name)).unwrap(),
+                HeaderValue::from_str(&format!("attachment; filename=\"{file_name}\"")).unwrap(),
             );
 
             info!("Database file {} sent successfully.", db_file_path);
@@ -559,7 +597,7 @@ pub async fn handle_download_db_file() -> impl IntoResponse {
             error!("Failed to open the database file: {}", err);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to open the database file: {}", err),
+                format!("Failed to open the database file: {err}"),
             )
                 .into_response()
         }
@@ -567,8 +605,11 @@ pub async fn handle_download_db_file() -> impl IntoResponse {
 }
 
 // upload database
-pub async fn handle_upload_db_file(mut multipart: Multipart) -> impl IntoResponse {
-    let db_file_path = CURRENT_DB_NAME;
+pub async fn handle_upload_db_file(
+    State(db_name): State<Arc<DbName>>,
+    mut multipart: Multipart,
+) -> impl IntoResponse {
+    let db_file_path = &db_name.name;
     info!("Starting database file upload.");
 
     while let Some(field) = multipart.next_field().await.unwrap_or(None) {
@@ -576,13 +617,13 @@ pub async fn handle_upload_db_file(mut multipart: Multipart) -> impl IntoRespons
         let content_type = field.content_type().unwrap_or("unknown");
 
         if content_type != "application/octet-stream" && !file_name.ends_with(".db") {
-            error!("Invalid file type: {}. Only .db files are accepted.", content_type);
+            error!(
+                "Invalid file type: {}. Only .db files are accepted.",
+                content_type
+            );
             return (
                 StatusCode::BAD_REQUEST,
-                format!(
-                    "Invalid file type: {}. Only .db files are accepted.",
-                    content_type
-                ),
+                format!("Invalid file type: {content_type}. Only .db files are accepted."),
             )
                 .into_response();
         }
@@ -593,7 +634,7 @@ pub async fn handle_upload_db_file(mut multipart: Multipart) -> impl IntoRespons
                 error!("Failed to read uploaded file: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Failed to read uploaded file: {}", err),
+                    format!("Failed to read uploaded file: {err}"),
                 )
                     .into_response();
             }
@@ -607,7 +648,7 @@ pub async fn handle_upload_db_file(mut multipart: Multipart) -> impl IntoRespons
                     error!("Failed to write to the database file: {}", err);
                     return (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to write to the database file: {}", err),
+                        format!("Failed to write to the database file: {err}"),
                     )
                         .into_response();
                 }
@@ -616,7 +657,7 @@ pub async fn handle_upload_db_file(mut multipart: Multipart) -> impl IntoRespons
                 error!("Failed to create the database file: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Failed to create the database file: {}", err),
+                    format!("Failed to create the database file: {err}"),
                 )
                     .into_response();
             }
@@ -630,7 +671,7 @@ pub async fn handle_upload_db_file(mut multipart: Multipart) -> impl IntoRespons
 
         return (
             StatusCode::OK,
-            format!("Successfully uploaded and saved as '{}'", db_file_path),
+            format!("Successfully uploaded and saved as '{db_file_path}'"),
         )
             .into_response();
     }
