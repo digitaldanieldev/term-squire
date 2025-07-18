@@ -26,7 +26,7 @@ For a quick start, you can import `example.mtf` for testing.
 ### Available Options:
 - **`-p --port`**  
    Set the port number for accessing Term-squire. *(Default: 1234)*
-- **`-d --datadir`**    
+- **`-d --datadir`**  
    Set the database location. *(Default: /data/term-squire-data/)*
 - **`-h --help`**  
    Display help information about the application.
