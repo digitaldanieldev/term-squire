@@ -1,7 +1,5 @@
 use axum::extract::{DefaultBodyLimit, State};
-use axum::middleware::AddExtension;
 use axum::routing::{delete, get, post};
-use axum::Extension;
 use axum::Router;
 use clap::{arg, command, Parser};
 use std::sync::Arc;
@@ -17,7 +15,7 @@ struct Args {
     #[arg(short, long, default_value_t = 1234)]
     port: u64,
     /// Directory where data is stored
-    #[arg(short, long, default_value = "/data")]
+    #[arg(short, long, default_value = "/data/term-squire-data/")]
     datadir: String,
 }
 

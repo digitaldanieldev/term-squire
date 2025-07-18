@@ -1,12 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::Arc;
 
     use axum::extract::State;
     use lazy_static::lazy_static;
-    use rusqlite::params;
-    use tempfile::tempdir;
     use term_squire::dictionary::database::*;
     use term_squire::import::parse::*;
 

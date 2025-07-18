@@ -554,7 +554,7 @@ pub fn get_all_terms(
     dictionary_iter.collect()
 }
 
-pub fn get_max_id_terms(State(db_info): State<Arc<DbInfo>>, db_name: &str) -> Result<i32, String> {
+pub fn get_max_id_terms(State(db_info): State<Arc<DbInfo>>) -> Result<i32, String> {
     let hid = get_max_term_id(State(db_info));
 
     match hid {
