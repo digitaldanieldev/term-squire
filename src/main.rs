@@ -29,7 +29,7 @@ async fn main() {
 
     let db_info = Arc::new(DbInfo {
         dir: if args.datadir.is_empty() {
-            "/data".to_string()
+            "/data/term-squire-data/".to_string()
         } else {
             args.datadir.clone()
         },
