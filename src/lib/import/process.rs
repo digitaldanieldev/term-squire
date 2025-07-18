@@ -1,6 +1,8 @@
-use crate::constants::CURRENT_DB_NAME;
+use std::sync::Arc;
+
 use crate::dictionary::database::*;
 use crate::import::parse::*;
+use axum::extract::State;
 use rusqlite::Result;
 use tracing::{error, info};
 
@@ -23,10 +25,10 @@ pub fn create_term_to_insert(term: &TermLanguageSet) -> TermLanguageSet {
         definition: term.definition.clone(),
     }
 }
-
-pub async fn import_dictionary_data(filename: &str) -> Result<(), String> {
-    let db_name = CURRENT_DB_NAME;
-
+pub async fn import_dictionary_data(
+    State(db_info): State<Arc<DbInfo>>,
+    filename: &str,
+) -> Result<(), String> {
     info!("Importing dictionary from file: {}", filename);
 
     let mut dictionary = Dictionary::new();
@@ -34,27 +36,33 @@ pub async fn import_dictionary_data(filename: &str) -> Result<(), String> {
 
     let _ = dictionary.serialize_to_json("processed_dictionary.json");
 
-    create_terms_table(CURRENT_DB_NAME);
+    create_terms_table(State(db_info.clone()));
 
-    for dt in dictionary.entries {
-        if let Err(err) = process_term_set(&dt) {
+    for dt in &dictionary.entries {
+        if let Err(err) = process_term_set(State(db_info.clone()), dt) {
             error!("Error processing term set: {}", err);
             return Err(err.to_string());
         }
     }
-    let unique_values_result = extract_and_insert_unique_values(db_name);
+
+    let unique_values_result = extract_and_insert_unique_values(State(db_info.clone()));
     handle_insert_unique_values_result(unique_values_result);
+
     info!("Dictionary import completed");
     Ok(())
 }
 
-pub fn process_term_set(dt: &DictionaryEntry) -> Result<()> {
+pub fn process_term_set(State(db_info): State<Arc<DbInfo>>, dt: &DictionaryEntry) -> Result<()> {
     info!("Processing term set: {:?}", dt.id);
 
     match dt.language_sets.len() {
-        2 => process_two_terms(&dt.language_sets[0], &dt.language_sets[1]),
-        1 => process_single_term(&dt.language_sets[0]),
-        n if n > 2 => process_three_or_more_terms(&dt.language_sets),
+        2 => process_two_terms(
+            State(db_info.clone()),
+            &dt.language_sets[0],
+            &dt.language_sets[1],
+        ),
+        1 => process_single_term(State(db_info.clone()), &dt.language_sets[0]),
+        n if n > 2 => process_three_or_more_terms(State(db_info.clone()), &dt.language_sets),
         _ => {
             error!("Unexpected number of terms in term set");
             Ok(())
@@ -62,11 +70,14 @@ pub fn process_term_set(dt: &DictionaryEntry) -> Result<()> {
     }
 }
 
-pub fn process_single_term(term: &TermLanguageSet) -> Result<()> {
+pub fn process_single_term(
+    State(db_info): State<Arc<DbInfo>>,
+    term: &TermLanguageSet,
+) -> Result<()> {
     let term_to_insert = create_term_to_insert(term);
     info!("Inserting single term: {:?}", term_to_insert);
 
-    if let Err(err) = add_term(CURRENT_DB_NAME, &term_to_insert) {
+    if let Err(err) = add_term(State(db_info), &term_to_insert) {
         error!("Failed to insert single term: {}", err);
         return Err(err);
     }
@@ -74,19 +85,20 @@ pub fn process_single_term(term: &TermLanguageSet) -> Result<()> {
 }
 
 pub fn process_two_terms(
+    State(db_info): State<Arc<DbInfo>>,
     first_term: &TermLanguageSet,
     second_term: &TermLanguageSet,
 ) -> Result<()> {
     let first_term_to_insert = create_term_to_insert(first_term);
     info!("Inserting first of two terms: {:?}", first_term_to_insert);
 
-    if let Err(err) = add_term(CURRENT_DB_NAME, &first_term_to_insert) {
+    if let Err(err) = add_term(State(db_info.clone()), &first_term_to_insert) {
         error!("Failed to insert first term: {}", err);
         return Err(err);
     }
 
     let term_set_id = get_term_set_id(
-        CURRENT_DB_NAME,
+        State(db_info.clone()),
         &first_term_to_insert.term.as_ref().unwrap(),
         &first_term_to_insert.language.as_ref().unwrap(),
     )?;
@@ -95,7 +107,7 @@ pub fn process_two_terms(
         info!("Term set ID: {:?}", id);
         let second_term_to_insert = create_term_to_insert(second_term);
         info!("Inserting second of two terms: {:?}", second_term_to_insert);
-        if let Err(err) = add_term_to_term_set(CURRENT_DB_NAME, id, &second_term_to_insert) {
+        if let Err(err) = add_term_to_term_set(State(db_info.clone()), id, &second_term_to_insert) {
             error!("Failed to add term to set: {}", err);
             return Err(err);
         }
@@ -109,7 +121,10 @@ pub fn process_two_terms(
     Ok(())
 }
 
-pub fn process_three_or_more_terms(terms: &[TermLanguageSet]) -> Result<()> {
+pub fn process_three_or_more_terms(
+    State(db_info): State<Arc<DbInfo>>,
+    terms: &[TermLanguageSet],
+) -> Result<()> {
     let mut term_set_id: Option<i32> = None;
 
     for (i, term) in terms.iter().enumerate() {
@@ -117,13 +132,13 @@ pub fn process_three_or_more_terms(terms: &[TermLanguageSet]) -> Result<()> {
         info!("Processing term {}: {:?}", i, term_to_insert);
 
         if i == 0 {
-            if let Err(err) = add_term(CURRENT_DB_NAME, &term_to_insert) {
+            if let Err(err) = add_term(State(db_info.clone()), &term_to_insert) {
                 error!("Failed to insert first term: {}", err);
                 return Err(err);
             }
 
             term_set_id = get_term_set_id(
-                CURRENT_DB_NAME,
+                State(db_info.clone()),
                 &term_to_insert.term.as_ref().unwrap(),
                 &term_to_insert.language.as_ref().unwrap(),
             )?;
@@ -135,7 +150,7 @@ pub fn process_three_or_more_terms(terms: &[TermLanguageSet]) -> Result<()> {
                 );
             }
         } else if let Some(id) = term_set_id {
-            if let Err(err) = add_term_to_term_set(CURRENT_DB_NAME, id, &term_to_insert) {
+            if let Err(err) = add_term_to_term_set(State(db_info.clone()), id, &term_to_insert) {
                 error!("Failed to add term to set: {}", err);
                 return Err(err);
             }

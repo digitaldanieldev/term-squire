@@ -1,4 +1,4 @@
-use axum::extract::DefaultBodyLimit;
+use axum::extract::{DefaultBodyLimit, State};
 use axum::middleware::AddExtension;
 use axum::routing::{delete, get, post};
 use axum::Extension;
@@ -18,7 +18,7 @@ struct Args {
     port: u64,
     /// Directory where data is stored
     #[arg(short, long, default_value = "/data")]
-    datadir: Option<String>,
+    datadir: String,
 }
 
 #[tokio::main]
@@ -27,15 +27,17 @@ async fn main() {
 
     let args = Args::parse();
 
-    let db_name = Arc::new(DbName {
-        name: format!(
-            "{}/{}",
-            args.datadir.unwrap_or_else(|| "/data".to_string()),
-            CURRENT_DB_NAME
-        ),
+    let db_info = Arc::new(DbInfo {
+        dir: if args.datadir.is_empty() {
+            "/data".to_string()
+        } else {
+            args.datadir.clone()
+        },
+        name: CURRENT_DB_NAME.to_string(),
+        table_name: "terms".to_string(),
     });
 
-    init_db(&db_name.name);
+    init_db(State(db_info.clone()));
 
     let app = Router::new()
         .route("/add_term_set", post(handle_add_term_set))
@@ -57,7 +59,7 @@ async fn main() {
         .route("/update_term", post(handle_update_term))
         .route("/upload_db_file", post(handle_upload_db_file))
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
-        .with_state(db_name)
+        .with_state(db_info)
         .into_make_service();
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", args.port))

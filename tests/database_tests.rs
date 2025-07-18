@@ -1,234 +1,212 @@
-use term_squire::dictionary::database::*;
-use term_squire::import::parse::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
 
-use lazy_static::lazy_static;
+    use axum::extract::State;
+    use lazy_static::lazy_static;
+    use rusqlite::params;
+    use tempfile::tempdir;
+    use term_squire::dictionary::database::*;
+    use term_squire::import::parse::*;
 
-lazy_static! {
-    static ref TERM_SET_1: TermLanguageSet = TermLanguageSet {
-        term: Some("term_1".to_string()),
-        language: Some("en".to_string()),
-        term_type: Some("noun".to_string()),
-        creator_id: Some("user_1".to_string()),
-        creation_timestamp: Some(current_epoch()),
-        updater_id: None,
-        update_timestamp: None,
-        subject: None,
-        source: None,
-        user: None,
-        attributes: None,
-        remark: None,
-        url: None,
-        context: None,
-        definition: None,
-    };
-    static ref TERM_SET_2: TermLanguageSet = TermLanguageSet {
-        term: Some("term_2".to_string()),
-        language: Some("nl".to_string()),
-        term_type: Some("noun".to_string()),
-        creator_id: Some("user_2".to_string()),
-        creation_timestamp: Some(current_epoch()),
-        updater_id: None,
-        update_timestamp: None,
-        subject: None,
-        source: None,
-        user: None,
-        attributes: None,
-        remark: None,
-        url: None,
-        context: None,
-        definition: None,
-    };
-}
+    const TEST_DB_NAME: &str = "test_db";
 
-// helper functions for tests
-pub fn create_test_db(db_name: &str) -> String {
-    let db_path = format!("{}.sqlite", db_name);
-    let _conn = connect_db(&db_path);
+    lazy_static! {
+        static ref TEST_DB_INFO: Arc<DbInfo> = Arc::new(DbInfo {
+            dir: "/data/term-squire-data".to_string(),
+            name: TEST_DB_NAME.to_string(),
+            table_name: "terms".to_string(),
+        });
+    }
+    lazy_static! {
+        static ref TERM_SET_1: TermLanguageSet = TermLanguageSet {
+            term: Some("term_1".to_string()),
+            language: Some("en".to_string()),
+            term_type: Some("noun".to_string()),
+            creator_id: Some("user_1".to_string()),
+            creation_timestamp: Some(current_epoch()),
+            updater_id: None,
+            update_timestamp: None,
+            subject: None,
+            source: None,
+            user: None,
+            attributes: None,
+            remark: None,
+            url: None,
+            context: None,
+            definition: None,
+        };
+        static ref TERM_SET_2: TermLanguageSet = TermLanguageSet {
+            term: Some("term_2".to_string()),
+            language: Some("nl".to_string()),
+            term_type: Some("noun".to_string()),
+            creator_id: Some("user_2".to_string()),
+            creation_timestamp: Some(current_epoch()),
+            updater_id: None,
+            update_timestamp: None,
+            subject: None,
+            source: None,
+            user: None,
+            attributes: None,
+            remark: None,
+            url: None,
+            context: None,
+            definition: None,
+        };
+    }
 
-    create_terms_table(&db_path);
+    fn create_test_db(test_name: &str) -> Arc<DbInfo> {
+        let base_dir = "/data/term-squire-data";
+        let db_path = format!("{}/{}.sqlite", base_dir, test_name);
 
-    db_path
-}
-pub fn remove_test_db(db_name: &str) {
-    std::fs::remove_file(db_name).unwrap_or_else(|_| {
-        panic!("Failed to delete database {}", db_name);
-    });
-}
+        // Remove any existing file (optional safety)
+        let _ = std::fs::remove_file(&db_path);
 
-pub fn assert_term_exists(db_name: &str, term: &str, language: &str) {
-    let retrieved_terms = search_terms(db_name, term, language);
-    assert!(retrieved_terms.is_ok());
-    let terms = retrieved_terms.unwrap();
-    assert_eq!(terms.len(), 1);
-    let retrieved_term = &terms[0];
-    assert_eq!(
-        retrieved_term.term_language_set.term.as_ref().unwrap(),
-        term
-    );
-}
+        let db_info = DbInfo {
+            dir: base_dir.to_string(),
+            name: test_name.to_string(),
+            table_name: "terms".to_string(),
+        };
 
-#[test]
-fn test_create_tables() {
-    let db_name = create_test_db("test_create_tables");
+        let db_info = Arc::new(db_info);
+        let state = State(db_info.clone());
 
-    let conn = connect_db(&db_name);
-    let termsets_table_exists = conn
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='terms'")
-        .unwrap()
-        .query_row([], |_| Ok(true))
-        .unwrap();
+        create_terms_table(state);
 
-    assert!(termsets_table_exists);
+        db_info
+    }
 
-    remove_test_db(&db_name);
-}
+    fn remove_test_db(db_info: &Arc<DbInfo>) {
+        std::fs::remove_file(&db_info.path()).unwrap_or_else(|_| {
+            panic!("Failed to delete database {}", db_info.path());
+        });
+    }
 
-#[test]
-fn test_insert_and_retrieve_termset() {
-    let db_name = create_test_db("test_insert_and_retrieve_termset");
+    fn add_term_wrapper(
+        db_info: &Arc<DbInfo>,
+        term_set: &TermLanguageSet,
+    ) -> Result<(), rusqlite::Error> {
+        add_term(State(db_info.clone()), term_set)
+    }
 
-    let insert_result = add_term(&db_name, &TERM_SET_1);
-    assert!(insert_result.is_ok());
+    fn assert_term_exists(db_info: &Arc<DbInfo>, term: &str, language: &str) {
+        let terms = search_terms(State(db_info.clone()), term, language).expect("Search failed");
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].term_language_set.term.as_deref(), Some(term));
+    }
 
-    assert_term_exists(&db_name, "term_1", "en");
-    remove_test_db(&db_name);
-}
+    #[test]
+    fn test_create_tables() {
+        let db_info = create_test_db("test_create_tables");
+        let conn = connect_db(State(db_info.clone()));
+        let table_exists = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='terms'")
+            .unwrap()
+            .query_row([], |_| Ok(true))
+            .unwrap();
 
-#[test]
-fn test_db_get_term_set_id_by_term_and_language() {
-    let db_name = create_test_db("test_db_get_term_id_by_term");
+        assert!(table_exists);
+        remove_test_db(&db_info);
+    }
 
-    let insert_result_1 = add_term(&db_name, &TERM_SET_1);
-    assert!(insert_result_1.is_ok());
+    #[test]
+    fn test_insert_and_retrieve_termset() {
+        let db_info = create_test_db("test_insert_and_retrieve_termset");
+        let insert_result = add_term_wrapper(&db_info, &TERM_SET_1);
+        assert!(insert_result.is_ok());
+        assert_term_exists(&db_info, "term_1", "en");
+        remove_test_db(&db_info);
+    }
 
-    assert_term_exists(&db_name, "term_1", "en");
-    let term_id = get_term_set_id(&db_name, "term_1", "en");
-    assert!(term_id.is_ok());
-    assert_eq!(term_id.unwrap().unwrap(), 1);
+    #[test]
+    fn test_db_get_term_set_id_by_term_and_language() {
+        let db_info = create_test_db("test_db_get_term_id_by_term");
+        add_term_wrapper(&db_info, &TERM_SET_1).unwrap();
+        assert_term_exists(&db_info, "term_1", "en");
 
-    remove_test_db(&db_name);
-}
+        let term_set_id = get_term_set_id(State(db_info.clone()), "term_1", "en").unwrap();
+        assert_eq!(term_set_id.unwrap(), 1);
+        remove_test_db(&db_info);
+    }
 
-#[test]
-fn test_db_get_term_set_id_by_term_id() {
-    let db_name = create_test_db("test_db_get_term_set_id_by_term_id");
+    #[test]
+    fn test_db_get_term_set_id_by_term_id() {
+        let db_info = create_test_db("test_db_get_term_set_id_by_term_id");
+        add_term_wrapper(&db_info, &TERM_SET_1).unwrap();
+        assert_term_exists(&db_info, "term_1", "en");
 
-    let insert_result_1 = add_term(&db_name, &TERM_SET_1);
-    assert!(insert_result_1.is_ok());
+        let term_set_id = get_term_set_id_by_term_id(State(db_info.clone()), 1).unwrap();
+        assert_eq!(term_set_id.unwrap(), 1);
+        remove_test_db(&db_info);
+    }
 
-    assert_term_exists(&db_name, "term_1", "en");
-    let term_set_id = get_term_set_id_by_term_id(&db_name, 1);
-    assert!(term_set_id.is_ok());
-    assert_eq!(term_set_id.unwrap().unwrap(), 1);
+    #[test]
+    fn test_db_add_termset_to_term() {
+        let db_info = create_test_db("test_db_add_termset_to_term");
+        add_term_wrapper(&db_info, &TERM_SET_1).unwrap();
+        assert_term_exists(&db_info, "term_1", "en");
 
-    remove_test_db(&db_name);
-}
+        let term_set_id = get_term_set_id(State(db_info.clone()), "term_1", "en")
+            .unwrap()
+            .unwrap();
+        let add_result = add_term_to_term_set(State(db_info.clone()), term_set_id, &TERM_SET_2);
+        assert!(add_result.is_ok());
+        remove_test_db(&db_info);
+    }
 
-#[test]
-fn test_db_add_termset_to_term() {
-    let db_name = create_test_db("test_db_add_termset_to_term");
+    #[test]
+    fn test_db_update_termset() {
+        let db_info = create_test_db("test_db_update_termset");
+        add_term_wrapper(&db_info, &TERM_SET_1).unwrap();
+        assert_term_exists(&db_info, "term_1", "en");
 
-    let insert_result_1 = add_term(&db_name, &TERM_SET_1);
-    assert!(insert_result_1.is_ok());
+        let term_set_id = get_term_set_id(State(db_info.clone()), "term_1", "en")
+            .unwrap()
+            .unwrap();
+        let update_result = update_term(State(db_info.clone()), term_set_id, &TERM_SET_2);
+        assert!(update_result.is_ok());
+        assert_term_exists(&db_info, "term_2", "nl");
+        remove_test_db(&db_info);
+    }
 
-    assert_term_exists(&db_name, "term_1", "en");
+    #[test]
+    fn test_db_get_data_all() {
+        let db_info = create_test_db("test_db_get_data_all");
+        add_term_wrapper(&db_info, &TERM_SET_1).unwrap();
+        add_term_wrapper(&db_info, &TERM_SET_2).unwrap();
 
-    let term_id_1 = get_term_set_id(&db_name, "term_1", "en").unwrap().unwrap();
-    assert_eq!(term_id_1, 1);
+        let all_terms = get_all_terms(State(db_info.clone())).unwrap();
+        assert_eq!(all_terms.len(), 2);
+        remove_test_db(&db_info);
+    }
 
-    let result_db_add_termset_to_term = add_term_to_term_set(&db_name, term_id_1, &TERM_SET_2);
+    #[test]
+    fn test_db_get_data_select_term_fuzzy() {
+        let db_info = create_test_db("test_db_get_data_select_term_fuzzy");
+        add_term_wrapper(&db_info, &TERM_SET_1).unwrap();
+        add_term_wrapper(&db_info, &TERM_SET_2).unwrap();
 
-    println!(
-        "Debug: result_db_add_termset_to_term = {:?}",
-        result_db_add_termset_to_term
-    );
-    assert!(result_db_add_termset_to_term.is_ok());
+        let terms = search_terms(State(db_info.clone()), "erm", "nl").unwrap();
+        assert_eq!(terms.len(), 1);
+        assert_eq!(terms[0].term_language_set.term, Some("term_2".to_string()));
+        remove_test_db(&db_info);
+    }
 
-    remove_test_db(&db_name);
-}
+    #[test]
+    fn test_db_delete_termset() {
+        let db_info = create_test_db("test_db_delete_termset");
+        add_term_wrapper(&db_info, &TERM_SET_1).unwrap();
+        assert_term_exists(&db_info, "term_1", "en");
 
-#[test]
-fn test_db_update_termset() {
-    let db_name = create_test_db("test_db_update_termset");
+        let term_set_id = get_term_set_id(State(db_info.clone()), "term_1", "en")
+            .unwrap()
+            .unwrap();
+        delete_term(State(db_info.clone()), term_set_id).unwrap();
 
-    let insert_result_1 = add_term(&db_name, &TERM_SET_1);
-    assert!(insert_result_1.is_ok());
+        let terms = search_terms(State(db_info.clone()), "term_1", "en").unwrap();
+        assert_eq!(terms.len(), 0);
 
-    assert_term_exists(&db_name, "term_1", "en");
-
-    let term_id_1 = get_term_set_id(&db_name, "term_1", "en").unwrap().unwrap();
-    assert_eq!(term_id_1, 1);
-
-    let result_db_update_termset = update_term(&db_name, term_id_1, &TERM_SET_2);
-
-    println!(
-        "Debug: result_db_add_termset_to_term = {:?}",
-        result_db_update_termset
-    );
-    assert!(result_db_update_termset.is_ok());
-    assert_term_exists(&db_name, "term_2", "nl");
-
-    remove_test_db(&db_name);
-}
-
-#[test]
-fn test_db_get_data_all() {
-    let db_name = create_test_db("test_db_get_data_all");
-
-    let insert_result_1 = add_term(&db_name, &TERM_SET_1);
-    assert!(insert_result_1.is_ok());
-
-    let insert_result_2 = add_term(&db_name, &TERM_SET_2);
-    assert!(insert_result_2.is_ok());
-
-    let all_dictionary_data = get_all_terms(&db_name);
-    assert!(all_dictionary_data.is_ok());
-    let terms = all_dictionary_data.unwrap();
-    assert_eq!(terms.len(), 2);
-
-    remove_test_db(&db_name);
-}
-
-#[test]
-fn test_db_get_data_select_term_fuzzy() {
-    let db_name = create_test_db("test_db_get_data_select_term_fuzzy");
-
-    let insert_result_1 = add_term(&db_name, &TERM_SET_1);
-    assert!(insert_result_1.is_ok());
-
-    assert_term_exists(&db_name, "term_1", "en");
-
-    let insert_result_2 = add_term(&db_name, &TERM_SET_2);
-    assert!(insert_result_2.is_ok());
-
-    assert_term_exists(&db_name, "term_2", "nl");
-
-    let data_by_select_term_fuzzy = search_terms(&db_name, "erm", "nl");
-    assert!(data_by_select_term_fuzzy.is_ok());
-    let terms = data_by_select_term_fuzzy.unwrap();
-    assert_eq!(terms.len(), 1);
-    assert_eq!(terms[0].term_language_set.term, Some("term_2".to_string()));
-
-    remove_test_db(&db_name);
-}
-
-#[test]
-fn test_db_delete_termset() {
-    let db_name = create_test_db("test_db_delete_termset");
-
-    let insert_result = add_term(&db_name, &TERM_SET_1);
-    assert!(insert_result.is_ok());
-
-    assert_term_exists(&db_name, "term_1", "en");
-
-    let term_id = get_term_set_id(&db_name, "term_1", "en").unwrap().unwrap();
-    let delete_result = delete_term(&db_name, term_id);
-    assert!(delete_result.is_ok());
-
-    let retrieved_terms = search_terms(&db_name, "term_1", "en");
-    assert!(retrieved_terms.is_ok());
-    let terms = retrieved_terms.unwrap();
-    assert_eq!(terms.len(), 0);
-
-    remove_test_db(&db_name);
+        remove_test_db(&db_info);
+    }
 }

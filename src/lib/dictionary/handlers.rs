@@ -3,14 +3,14 @@ use axum::{
     debug_handler,
     extract::{Json, State},
     http::{HeaderValue, StatusCode},
-    response::{Html, IntoResponse, Json as AxumJson, Response},
+    response::{Html, IntoResponse, Response},
 };
 use axum::{
     extract::{Multipart, Query},
     Form,
 };
 use lazy_static::lazy_static;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
 use std::{
     collections::HashMap,
@@ -27,7 +27,7 @@ use crate::{
     dictionary::database::{
         add_term, add_term_to_term_set, current_epoch, delete_term,
         extract_and_insert_unique_values, get_all_terms, get_term_by_id, search_terms,
-        search_terms_by_term_set_id, update_term, DbName, TermsList,
+        search_terms_by_term_set_id, update_term, DbInfo, TermsList,
     },
     import::{parse::TermLanguageSet, process::import_dictionary_data},
 };
@@ -51,7 +51,7 @@ pub struct AddTermSetRequest {
 
 #[debug_handler]
 pub async fn handle_add_term_set(
-    State(db_name): State<Arc<DbName>>,
+    State(db_info): State<Arc<DbInfo>>,
     Json(payload): Json<AddTermSetRequest>,
 ) -> impl IntoResponse {
     let existing_term_set_id = payload.existing_term_set_id;
@@ -66,13 +66,11 @@ pub async fn handle_add_term_set(
         existing_term_set_id
     );
 
-    let db_name_str = &db_name.name;
-
-    match add_term_to_term_set(db_name_str, existing_term_set_id, &term_set) {
+    match add_term_to_term_set(State(db_info.clone()), existing_term_set_id, &term_set) {
         Ok(_) => {
             info!("Term set added successfully.");
             clear_cache();
-            let _unique_values_result = extract_and_insert_unique_values(db_name_str);
+            let _unique_values_result = extract_and_insert_unique_values(State(db_info.clone()));
             (
                 StatusCode::OK,
                 "Term set added to existing term successfully",
@@ -98,19 +96,18 @@ pub struct DeleteTermRequest {
 
 #[debug_handler]
 pub async fn handle_delete_term(
-    State(db_name): State<Arc<DbName>>,
+    State(db_info): State<Arc<DbInfo>>,
     Query(params): Query<DeleteTermRequest>,
 ) -> impl IntoResponse {
-    let db_name_str = &db_name.name;
     let term_id = params.term_id;
 
     info!("Deleting term with ID: {}", term_id);
 
-    match delete_term(&db_name_str, term_id) {
+    match delete_term(State(db_info.clone()), term_id) {
         Ok(_) => {
             info!("Term deleted successfully.");
             clear_cache();
-            let _unique_values_result = extract_and_insert_unique_values(&db_name_str);
+            let _unique_values_result = extract_and_insert_unique_values(State(db_info.clone()));
             (StatusCode::OK, "Term deleted successfully").into_response()
         }
         Err(rusqlite::Error::ExecuteReturnedResults) => {
@@ -139,10 +136,9 @@ pub struct InsertTermRequest {
 }
 
 pub async fn handle_insert_term(
-    State(db_name): State<Arc<DbName>>,
+    State(db_info): State<Arc<DbInfo>>,
     Json(payload): Json<InsertTermRequest>,
 ) -> impl IntoResponse {
-    let db_name_str = &db_name.name;
     let mut term_set = payload.term_language_set;
 
     let now = current_epoch();
@@ -151,11 +147,11 @@ pub async fn handle_insert_term(
 
     info!("Inserting new term into database.");
 
-    match add_term(&db_name_str, &term_set) {
+    match add_term(State(db_info.clone()), &term_set) {
         Ok(_) => {
             info!("Term inserted successfully.");
             clear_cache();
-            let _unique_values_result = extract_and_insert_unique_values(&db_name_str);
+            let _unique_values_result = extract_and_insert_unique_values(State(db_info.clone()));
             (StatusCode::OK, "Term inserted successfully").into_response()
         }
         Err(err) => {
@@ -171,7 +167,7 @@ pub async fn handle_insert_term(
 
 // import dictionary data
 pub async fn handle_import_dictionary_data(
-    State(db_name): State<Arc<DbName>>,
+    State(db_info): State<Arc<DbInfo>>,
     mut multipart: Multipart,
 ) -> impl IntoResponse {
     while let Some(mut field) = match multipart.next_field().await {
@@ -253,7 +249,10 @@ pub async fn handle_import_dictionary_data(
 
             info!("Dictionary file {} uploaded successfully.", name);
 
-            if let Err(err) = import_dictionary_data(file_path.to_string_lossy().as_ref()).await {
+            if let Err(err) =
+                import_dictionary_data(State(db_info.clone()), file_path.to_string_lossy().as_ref())
+                    .await
+            {
                 error!("Failed to import dictionary: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -351,12 +350,10 @@ pub struct TermsTemplate {
     pub terms: Vec<TermsList>,
 }
 
-pub async fn handle_terms(State(db_name): State<Arc<DbName>>) -> Html<String> {
-    let db_name_str = &db_name.name;
-
+pub async fn handle_terms(State(db_info): State<Arc<DbInfo>>) -> Html<String> {
     info!("Fetching terms.");
 
-    match get_all_terms(&db_name_str) {
+    match get_all_terms(State(db_info.clone())) {
         Ok(terms) => {
             info!("Terms fetched successfully.");
             let template = TermsTemplate { terms };
@@ -386,15 +383,14 @@ pub struct TermDetailTemplate {
 }
 
 pub async fn handle_get_term_details(
-    State(db_name): State<Arc<DbName>>,
+    State(db_info): State<Arc<DbInfo>>,
     Query(params): Query<TermDetailRequest>,
 ) -> impl IntoResponse {
-    let db_name_str = &db_name.name;
     let term_id = params.term_id;
 
     info!("Fetching details for term ID: {}", term_id);
 
-    match get_term_by_id(&db_name_str, term_id) {
+    match get_term_by_id(State(db_info.clone()), term_id) {
         Ok(Some(term)) => {
             info!("Term details fetched successfully.");
             let template = TermDetailTemplate { term };
@@ -430,10 +426,9 @@ pub struct SearchResultsTemplate {
 }
 
 pub async fn handle_search_terms(
-    State(db_name): State<Arc<DbName>>,
+    State(db_info): State<Arc<DbInfo>>,
     Query(params): Query<SearchRequest>,
 ) -> impl IntoResponse {
-    let db_name_str = &db_name.name;
     let term_select = params.term.clone();
     let language_select = params.language.clone();
     let cache_key = format!("{term_select}:{language_select}");
@@ -453,7 +448,7 @@ pub async fn handle_search_terms(
     );
 
     // Perform the database search if cache miss
-    match search_terms(&db_name_str, &term_select, &language_select) {
+    match search_terms(State(db_info.clone()), &term_select, &language_select) {
         Ok(terms) => {
             info!("Search completed successfully.");
             // Update the cache
@@ -476,15 +471,14 @@ pub struct SearchByTermSetIdRequest {
 }
 
 pub async fn handle_search_terms_by_term_set_id(
-    State(db_name): State<Arc<DbName>>,
+    State(db_info): State<Arc<DbInfo>>,
     Query(params): Query<SearchByTermSetIdRequest>,
 ) -> impl IntoResponse {
-    let db_name_str = &db_name.name;
     let term_set_id = params.term_set_id;
 
     info!("Searching for terms with term_set_id: {}", term_set_id);
 
-    match search_terms_by_term_set_id(&db_name_str, term_set_id) {
+    match search_terms_by_term_set_id(State(db_info.clone()), term_set_id) {
         Ok(terms) => {
             info!("Search completed successfully.");
             Json(terms)
@@ -504,10 +498,9 @@ pub struct UpdateTermRequest {
 }
 
 pub async fn handle_update_term(
-    State(db_name): State<Arc<DbName>>,
+    State(db_info): State<Arc<DbInfo>>,
     Json(payload): Json<UpdateTermRequest>,
 ) -> impl IntoResponse {
-    let db_name_str = &db_name.name;
     let term_id = payload.term_id;
     let mut term_set = payload.term_language_set;
 
@@ -516,11 +509,11 @@ pub async fn handle_update_term(
 
     info!("Updating term ID: {}", term_id);
 
-    match update_term(&db_name_str, term_id, &term_set) {
+    match update_term(State(db_info.clone()), term_id, &term_set) {
         Ok(_) => {
             info!("Term updated successfully.");
             clear_cache();
-            let _unique_values_result = extract_and_insert_unique_values(&db_name_str);
+            let _unique_values_result = extract_and_insert_unique_values(State(db_info.clone()));
             (StatusCode::OK, "Term updated successfully").into_response()
         }
         Err(err) => {
@@ -550,17 +543,17 @@ pub async fn handle_database_management() -> Html<String> {
 }
 
 // download the database
-pub async fn handle_download_db_file(State(db_name): State<Arc<DbName>>) -> impl IntoResponse {
-    let db_file_path = &db_name.name;
+pub async fn handle_download_db_file(State(db_info): State<Arc<DbInfo>>) -> impl IntoResponse {
+    let path = &db_info.path();
 
-    if !Path::new(db_file_path).exists() {
-        error!("Database file not found: {}", db_file_path);
+    if !Path::new(path).exists() {
+        error!("Database file not found: {}", path);
         return (StatusCode::NOT_FOUND, "Database file not found").into_response();
     }
 
-    info!("Sending database file: {}", db_file_path);
+    info!("Sending database file: {}", path);
 
-    match File::open(db_file_path).await {
+    match File::open(path).await {
         Ok(mut file) => {
             let mut buffer = Vec::new();
             if let Err(err) = file.read_to_end(&mut buffer).await {
@@ -572,10 +565,10 @@ pub async fn handle_download_db_file(State(db_name): State<Arc<DbName>>) -> impl
                     .into_response();
             }
 
-            let file_name = Path::new(db_file_path)
+            let file_name = Path::new(path)
                 .file_name()
                 .and_then(|name| name.to_str())
-                .unwrap_or(db_file_path);
+                .unwrap_or("database.db");
 
             let mut response = Response::new(buffer.into());
 
@@ -589,8 +582,7 @@ pub async fn handle_download_db_file(State(db_name): State<Arc<DbName>>) -> impl
                 HeaderValue::from_str(&format!("attachment; filename=\"{file_name}\"")).unwrap(),
             );
 
-            info!("Database file {} sent successfully.", db_file_path);
-
+            info!("Database file sent successfully.");
             response
         }
         Err(err) => {
@@ -603,13 +595,12 @@ pub async fn handle_download_db_file(State(db_name): State<Arc<DbName>>) -> impl
         }
     }
 }
-
 // upload database
 pub async fn handle_upload_db_file(
-    State(db_name): State<Arc<DbName>>,
+    State(db_info): State<Arc<DbInfo>>,
     mut multipart: Multipart,
 ) -> impl IntoResponse {
-    let db_file_path = &db_name.name;
+    let db_file_path = &db_info.path();
     info!("Starting database file upload.");
 
     while let Some(field) = multipart.next_field().await.unwrap_or(None) {
