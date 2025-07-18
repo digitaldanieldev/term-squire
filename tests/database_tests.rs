@@ -6,6 +6,7 @@ mod tests {
     use lazy_static::lazy_static;
     use term_squire::dictionary::database::*;
     use term_squire::import::parse::*;
+    use term_squire::import::process::*;
 
     const TEST_DB_NAME: &str = "test_db";
 
@@ -16,6 +17,7 @@ mod tests {
             table_name: "terms".to_string(),
         });
     }
+
     lazy_static! {
         static ref TERM_SET_1: TermLanguageSet = TermLanguageSet {
             term: Some("term_1".to_string()),
@@ -47,6 +49,40 @@ mod tests {
             user: None,
             attributes: None,
             remark: None,
+            url: None,
+            context: None,
+            definition: None,
+        };
+        static ref TERM_SET_3: TermLanguageSet = TermLanguageSet {
+            term: Some("term_3".to_string()),
+            language: Some("fr".to_string()),
+            term_type: None,
+            creator_id: Some("user_3".to_string()),
+            creation_timestamp: Some(current_epoch()),
+            updater_id: None,
+            update_timestamp: None,
+            subject: None,
+            source: None,
+            user: None,
+            attributes: None,
+            remark: None,
+            url: None,
+            context: Some("context for term_3".to_string()),
+            definition: Some("Definition of term_3".to_string()),
+        };
+        static ref TERM_SET_4: TermLanguageSet = TermLanguageSet {
+            term: None,
+            language: Some("de".to_string()),
+            term_type: Some("verb".to_string()),
+            creator_id: None,
+            creation_timestamp: Some(current_epoch()),
+            updater_id: None,
+            update_timestamp: None,
+            subject: None,
+            source: None,
+            user: None,
+            attributes: None,
+            remark: Some("No term provided".to_string()),
             url: None,
             context: None,
             definition: None,
@@ -204,6 +240,72 @@ mod tests {
         let terms = search_terms(State(db_info.clone()), "term_1", "en").unwrap();
         assert_eq!(terms.len(), 0);
 
+        remove_test_db(&db_info);
+    }
+
+    #[test]
+    fn test_process_single_term_complete() {
+        let db_info = create_test_db("test_process_single_term_complete");
+        let result = process_single_term(State(db_info.clone()), &TERM_SET_1);
+        assert!(result.is_ok());
+        assert_term_exists(&db_info, "term_1", "en");
+        remove_test_db(&db_info);
+    }
+
+    #[test]
+    fn test_process_single_term_partial() {
+        let db_info = create_test_db("test_process_single_term_partial");
+        let result = process_single_term(State(db_info.clone()), &TERM_SET_3);
+        assert!(result.is_ok());
+        assert_term_exists(&db_info, "term_3", "fr");
+        remove_test_db(&db_info);
+    }
+
+    #[test]
+    fn test_process_two_terms() {
+        let db_info = create_test_db("test_process_two_terms");
+        let result = process_two_terms(State(db_info.clone()), &TERM_SET_1, &TERM_SET_2);
+        assert!(result.is_ok());
+
+        assert_term_exists(&db_info, "term_1", "en");
+        assert_term_exists(&db_info, "term_2", "nl");
+        remove_test_db(&db_info);
+    }
+
+    #[test]
+    fn test_process_two_terms_partial() {
+        let db_info = create_test_db("test_process_two_terms_partial");
+        let result = process_two_terms(State(db_info.clone()), &TERM_SET_3, &TERM_SET_2);
+        assert!(result.is_ok());
+
+        assert_term_exists(&db_info, "term_3", "fr");
+        assert_term_exists(&db_info, "term_2", "nl");
+        remove_test_db(&db_info);
+    }
+
+    #[test]
+    fn test_process_three_or_more_terms() {
+        let db_info = create_test_db("test_process_three_or_more_terms");
+        let terms = vec![TERM_SET_1.clone(), TERM_SET_2.clone(), TERM_SET_3.clone()];
+        let result = process_three_or_more_terms(State(db_info.clone()), &terms);
+        assert!(result.is_ok());
+
+        assert_term_exists(&db_info, "term_1", "en");
+        assert_term_exists(&db_info, "term_2", "nl");
+        assert_term_exists(&db_info, "term_3", "fr");
+        remove_test_db(&db_info);
+    }
+
+    #[test]
+    fn test_process_three_or_more_terms_with_missing_term() {
+        let db_info = create_test_db("test_process_three_or_more_terms_with_missing_term");
+        let terms = vec![TERM_SET_4.clone(), TERM_SET_2.clone(), TERM_SET_3.clone()];
+        let result = process_three_or_more_terms(State(db_info.clone()), &terms);
+        assert!(result.is_ok());
+
+        // It should skip TERM_SET_4 because term is None, but still process the others
+        assert_term_exists(&db_info, "term_2", "nl");
+        assert_term_exists(&db_info, "term_3", "fr");
         remove_test_db(&db_info);
     }
 }

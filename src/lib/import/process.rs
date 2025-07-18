@@ -83,39 +83,54 @@ pub fn process_single_term(
     }
     Ok(())
 }
-
 pub fn process_two_terms(
     State(db_info): State<Arc<DbInfo>>,
     first_term: &TermLanguageSet,
     second_term: &TermLanguageSet,
 ) -> Result<()> {
     let first_term_to_insert = create_term_to_insert(first_term);
-    info!("Inserting first of two terms: {:?}", first_term_to_insert);
+    let second_term_to_insert = create_term_to_insert(second_term);
 
-    if let Err(err) = add_term(State(db_info.clone()), &first_term_to_insert) {
-        error!("Failed to insert first term: {}", err);
+    let (primary_term, secondary_term) = if first_term_to_insert.term.is_some() {
+        (first_term_to_insert, second_term_to_insert)
+    } else if second_term_to_insert.term.is_some() {
+        (second_term_to_insert, first_term_to_insert)
+    } else {
+        error!(
+            "Both terms are missing 'term' values: {:?}, {:?}",
+            first_term_to_insert, second_term_to_insert
+        );
+        return Err(rusqlite::Error::InvalidQuery); // use appropriate rusqlite error if needed
+    };
+
+    info!("Inserting primary term: {:?}", primary_term);
+    if let Err(err) = add_term(State(db_info.clone()), &primary_term) {
+        error!("Failed to insert primary term: {}", err);
         return Err(err);
     }
 
     let term_set_id = get_term_set_id(
         State(db_info.clone()),
-        &first_term_to_insert.term.as_ref().unwrap(),
-        &first_term_to_insert.language.as_ref().unwrap(),
+        primary_term.term.as_ref().unwrap(),
+        primary_term.language.as_ref().unwrap(),
     )?;
 
     if let Some(id) = term_set_id {
         info!("Term set ID: {:?}", id);
-        let second_term_to_insert = create_term_to_insert(second_term);
-        info!("Inserting second of two terms: {:?}", second_term_to_insert);
-        if let Err(err) = add_term_to_term_set(State(db_info.clone()), id, &second_term_to_insert) {
-            error!("Failed to add term to set: {}", err);
+        info!(
+            "Inserting secondary term into term set: {:?}",
+            secondary_term
+        );
+        if let Err(err) = add_term_to_term_set(State(db_info), id, &secondary_term) {
+            error!("Failed to add secondary term to set: {}", err);
             return Err(err);
         }
     } else {
         error!(
-            "Failed to retrieve term set ID for term {:?}",
-            first_term_to_insert.term
+            "Failed to retrieve term set ID for primary term {:?}",
+            primary_term.term
         );
+        return Err(rusqlite::Error::QueryReturnedNoRows);
     }
 
     Ok(())
@@ -126,40 +141,59 @@ pub fn process_three_or_more_terms(
     terms: &[TermLanguageSet],
 ) -> Result<()> {
     let mut term_set_id: Option<i32> = None;
+    let mut primary_term_to_insert: Option<TermLanguageSet> = None;
 
-    for (i, term) in terms.iter().enumerate() {
+    for term in terms {
         let term_to_insert = create_term_to_insert(term);
-        info!("Processing term {}: {:?}", i, term_to_insert);
 
-        if i == 0 {
-            if let Err(err) = add_term(State(db_info.clone()), &term_to_insert) {
-                error!("Failed to insert first term: {}", err);
-                return Err(err);
-            }
+        if term_to_insert.term.is_some() {
+            info!("Inserting primary term: {:?}", term_to_insert);
+
+            add_term(State(db_info.clone()), &term_to_insert)?;
 
             term_set_id = get_term_set_id(
                 State(db_info.clone()),
-                &term_to_insert.term.as_ref().unwrap(),
-                &term_to_insert.language.as_ref().unwrap(),
+                term_to_insert.term.as_ref().unwrap(),
+                term_to_insert.language.as_ref().unwrap(),
             )?;
 
             if term_set_id.is_none() {
                 error!(
-                    "Failed to retrieve term set ID for term {:?}",
+                    "Failed to retrieve term set ID for primary term {:?}",
                     term_to_insert.term
                 );
+                return Err(rusqlite::Error::InvalidQuery);
             }
-        } else if let Some(id) = term_set_id {
-            if let Err(err) = add_term_to_term_set(State(db_info.clone()), id, &term_to_insert) {
-                error!("Failed to add term to set: {}", err);
-                return Err(err);
-            }
-        } else {
-            error!(
-                "Term set ID is None, cannot add term {:?}",
-                term_to_insert.term
-            );
+
+            primary_term_to_insert = Some(term_to_insert);
+            break;
         }
+    }
+
+    let term_set_id = match term_set_id {
+        Some(id) => id,
+        None => {
+            error!("No primary term found to establish a term set ID");
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+    };
+
+    for (i, term) in terms.iter().enumerate() {
+        let term_to_insert = create_term_to_insert(term);
+
+        if let Some(primary_term) = &primary_term_to_insert {
+            if term_to_insert.term == primary_term.term
+                && term_to_insert.language == primary_term.language
+            {
+                continue;
+            }
+        }
+
+        info!(
+            "Adding term {} to set ID {}: {:?}",
+            i, term_set_id, term_to_insert
+        );
+        add_term_to_term_set(State(db_info.clone()), term_set_id, &term_to_insert)?;
     }
 
     Ok(())
