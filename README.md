@@ -26,6 +26,8 @@ For a quick start, you can import `example.mtf` for testing.
 ### Available Options:
 - **`-p --port`**  
    Set the port number for accessing Term-squire. *(Default: 1234)*
+- **`-d --datadir`**  
+   Set the database location. *(Default: /data/term-squire-data/)*
 - **`-h --help`**  
    Display help information about the application.
 - **`-v --version`**  
@@ -213,3 +215,84 @@ Term-squire uses an SQLite database to store terms.
 Yes, you can download the database from Term-squire and use the [SQLite Database Browser](https://sqlitebrowser.org/dl/) to view its contents.
 
 ---
+
+---
+
+## Running Term-squire with Docker
+
+You can also run Term-squire using Docker for easier deployment and environment management.
+
+### Using Docker Compose
+
+Here is a sample `docker-compose.yml` setup that runs both **Term-squire** and an **nginx-auth** reverse proxy with SSL:
+
+```yaml
+services:
+  term-squire:
+    build:
+      context: ./term-squire
+      dockerfile: Dockerfile
+    container_name: term-squire
+    ports:
+      - "12500:12500"
+    networks:
+      network:
+        ipv4_address: 172.27.0.2
+    volumes:
+      - ./ssl:/etc/ssl
+      - /my/nas/docker/term-squire:/data/term-squire-data
+    restart: always
+
+  nginx-auth:
+    depends_on:
+      - term-squire
+    build:
+      context: ./nginx-auth
+      dockerfile: Dockerfile
+    container_name: nginx-auth
+    ports:
+      - "12443:443"
+    networks:
+      network:
+        ipv4_address: 172.27.0.3
+    volumes:
+      - ./ssl:/etc/ssl
+      - /my/nas/docker/nginx-logs/term-squire:/var/log/nginx
+    restart: always
+
+networks:
+  network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.27.0.0/24
+          gateway: 172.27.0.1
+```
+
+
+## Dockerfile for term-squire
+
+Example term-squire/Dockerfile used in the above configuration:
+
+```
+# Use the base image
+FROM ubuntu:22.04
+
+# Set the working directory inside the container
+WORKDIR /usr/local/bin
+
+# Install dependencies
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
+# Copy the pre-built Term-squire binary from the host
+COPY ./term-squire /usr/local/bin/term-squire
+
+# Make sure the binary is executable
+RUN chmod +x /usr/local/bin/term-squire
+
+# Expose the application's port
+EXPOSE 12500
+
+# Run the application
+CMD ["term-squire", "-p", "12500"]
+```

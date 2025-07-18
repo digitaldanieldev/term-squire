@@ -1,12 +1,12 @@
-use axum::extract::DefaultBodyLimit;
+use axum::extract::{DefaultBodyLimit, State};
 use axum::routing::{delete, get, post};
 use axum::Router;
 use clap::{arg, command, Parser};
+use std::sync::Arc;
 use term_squire::constants::CURRENT_DB_NAME;
 use term_squire::dictionary::{database::*, handlers::*};
 use term_squire::logging::*;
 use tracing::info;
-
 /// simple dictionary
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -14,6 +14,9 @@ struct Args {
     /// Port number used for server
     #[arg(short, long, default_value_t = 1234)]
     port: u64,
+    /// Directory where data is stored
+    #[arg(short, long, default_value = "/data/term-squire-data/")]
+    datadir: String,
 }
 
 #[tokio::main]
@@ -22,7 +25,17 @@ async fn main() {
 
     let args = Args::parse();
 
-    init_db(CURRENT_DB_NAME);
+    let db_info = Arc::new(DbInfo {
+        dir: if args.datadir.is_empty() {
+            "/data/term-squire-data/".to_string()
+        } else {
+            args.datadir.clone()
+        },
+        name: CURRENT_DB_NAME.to_string(),
+        table_name: "terms".to_string(),
+    });
+
+    init_db(State(db_info.clone()));
 
     let app = Router::new()
         .route("/add_term_set", post(handle_add_term_set))
@@ -34,13 +47,17 @@ async fn main() {
         .route("/insert_form", get(handle_insert_form))
         .route("/insert_term", post(handle_insert_term))
         .route("/search", get(handle_search_terms))
-        .route("/search_terms_by_term_set_id", get(handle_search_terms_by_term_set_id))
+        .route(
+            "/search_terms_by_term_set_id",
+            get(handle_search_terms_by_term_set_id),
+        )
         .route("/settings", get(handle_get_settings))
         .route("/terms", get(handle_terms))
         .route("/term_detail", get(handle_get_term_details))
         .route("/update_term", post(handle_update_term))
         .route("/upload_db_file", post(handle_upload_db_file))
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
+        .with_state(db_info)
         .into_make_service();
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", args.port))

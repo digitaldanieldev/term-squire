@@ -1,8 +1,23 @@
 use crate::import::parse::TermLanguageSet;
+use axum::extract::State;
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tracing::info;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DbInfo {
+    pub dir: String,
+    pub name: String,
+    pub table_name: String,
+}
+
+impl DbInfo {
+    pub fn path(&self) -> String {
+        format!("{}/{}.sqlite", self.dir, self.name)
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TermsList {
@@ -107,15 +122,18 @@ impl TermsList {
     }
 }
 
-pub fn add_term(db_name: &str, term_set: &TermLanguageSet) -> Result<(), rusqlite::Error> {
-    let conn = connect_db(db_name);
+pub fn add_term(
+    State(db_info): State<Arc<DbInfo>>,
+    term_set: &TermLanguageSet,
+) -> Result<(), rusqlite::Error> {
+    let clone_state_id = State(db_info.clone());
+    let conn = connect_db(State(db_info.clone()));
 
-    let term_set_id = match get_max_term_set_id(db_name)? {
-        id => id + 1,
-    };
+    let id = get_max_term_set_id(clone_state_id)?;
+    let term_set_id = id + 1;
 
-    conn.execute(
-        "INSERT INTO terms (
+    let insert_sql = format!(
+        "INSERT INTO {} (
             term_set_id, 
             term, 
             language, 
@@ -133,6 +151,11 @@ pub fn add_term(db_name: &str, term_set: &TermLanguageSet) -> Result<(), rusqlit
             context, 
             definition
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        db_info.table_name
+    );
+
+    conn.execute(
+        &insert_sql,
         params![
             term_set_id,
             term_set.term,
@@ -157,15 +180,15 @@ pub fn add_term(db_name: &str, term_set: &TermLanguageSet) -> Result<(), rusqlit
 }
 
 pub fn add_term_to_term_set(
-    db_name: &str,
+    State(db_info): State<Arc<DbInfo>>,
     existing_term_set_id: i32,
     term_set: &TermLanguageSet,
 ) -> Result<(), rusqlite::Error> {
-    let conn = connect_db(db_name);
-    println!("Debug: existing_term_set_id = {}", existing_term_set_id);
+    let conn = connect_db(State(db_info.clone()));
+    println!("Debug: existing_term_set_id = {existing_term_set_id}");
 
-    conn.execute(
-        "INSERT INTO terms (
+    let insert_sql = format!(
+        "INSERT INTO {} (
             term_set_id, 
             term, 
             language, 
@@ -183,6 +206,11 @@ pub fn add_term_to_term_set(
             context, 
             definition
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        db_info.table_name
+    );
+
+    conn.execute(
+        &insert_sql,
         params![
             existing_term_set_id,
             term_set.term,
@@ -206,50 +234,58 @@ pub fn add_term_to_term_set(
     Ok(())
 }
 
-pub fn connect_db(db_name: &str) -> Connection {
-    let conn = Connection::open(format!("{}", db_name)).unwrap();
+pub fn connect_db(State(db_info): State<Arc<DbInfo>>) -> Connection {
+    let conn = Connection::open(format!("{}", db_info.path())).unwrap();
     conn
 }
 
-pub fn check_termset_count(db_name: &str, term_id: i32) -> Result<i32, rusqlite::Error> {
-    let conn = connect_db(db_name);
+pub fn check_termset_count(
+    State(db_info): State<Arc<DbInfo>>,
+    term_id: i32,
+) -> Result<i32, rusqlite::Error> {
+    let conn = connect_db(State(db_info.clone()));
 
-    let termset_count: i32 = conn.query_row(
-        "SELECT COUNT(*) FROM terms WHERE term_id = ?1",
-        [&term_id],
-        |row| row.get(0),
-    )?;
+    let sql = format!(
+        "SELECT COUNT(*) FROM {} WHERE term_id = ?1",
+        db_info.table_name
+    );
+
+    let termset_count: i32 = conn.query_row(&sql, [&term_id], |row| row.get(0))?;
     Ok(termset_count)
 }
 
-pub fn create_terms_table(db_name: &str) {
-    info!("Creating terms table.");
-    connect_db(db_name)
-        .execute_batch(
-            "
-            BEGIN;
-            CREATE TABLE IF NOT EXISTS terms (
-                term_id INTEGER PRIMARY KEY,
-                term_set_id INTEGER,
-                term TEXT,
-                language TEXT,
-                term_type TEXT,
-                creator_id TEXT,
-                creation_timestamp INTEGER,
-                updater_id TEXT,
-                update_timestamp INTEGER,
-                subject TEXT,
-                source TEXT,
-                user TEXT,
-                attributes TEXT,
-                remark TEXT,
-                url TEXT,
-                context TEXT,
-                definition TEXT
-            );
-            COMMIT;
-            ",
-        )
+pub fn create_terms_table(State(db_info): State<Arc<DbInfo>>) {
+    info!("Creating table: {}", db_info.table_name);
+
+    let create_table_sql = format!(
+        "
+        BEGIN;
+        CREATE TABLE IF NOT EXISTS {} (
+            term_id INTEGER PRIMARY KEY,
+            term_set_id INTEGER,
+            term TEXT,
+            language TEXT,
+            term_type TEXT,
+            creator_id TEXT,
+            creation_timestamp INTEGER,
+            updater_id TEXT,
+            update_timestamp INTEGER,
+            subject TEXT,
+            source TEXT,
+            user TEXT,
+            attributes TEXT,
+            remark TEXT,
+            url TEXT,
+            context TEXT,
+            definition TEXT
+        );
+        COMMIT;
+        ",
+        db_info.table_name,
+    );
+
+    connect_db(State(db_info))
+        .execute_batch(&create_table_sql)
         .unwrap();
 }
 
@@ -259,8 +295,8 @@ pub fn current_epoch() -> i64 {
     timestamp
 }
 
-pub fn create_unique_values_tables(db_name: &str) {
-    let connection = connect_db(db_name);
+pub fn create_unique_values_tables(State(db_info): State<Arc<DbInfo>>) {
+    let connection = connect_db(State(db_info));
 
     connection
         .execute_batch(
@@ -313,8 +349,11 @@ pub fn create_unique_values_tables(db_name: &str) {
         .unwrap();
 }
 
-pub fn delete_term(db_name: &str, term_id: i32) -> Result<(), rusqlite::Error> {
-    let conn = connect_db(db_name);
+pub fn delete_term(
+    State(db_info): State<Arc<DbInfo>>,
+    term_id: i32,
+) -> Result<(), rusqlite::Error> {
+    let conn = connect_db(State(db_info));
 
     conn.execute("BEGIN TRANSACTION", [])?;
 
@@ -334,19 +373,21 @@ pub fn delete_term(db_name: &str, term_id: i32) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
-pub fn delete_termset(db_name: &str, termset_to_delete: i32) -> Result<(), rusqlite::Error> {
-    let conn = connect_db(db_name);
+pub fn delete_termset(
+    State(db_info): State<Arc<DbInfo>>,
+    termset_to_delete: i32,
+) -> Result<(), rusqlite::Error> {
+    let conn = connect_db(State(db_info.clone()));
 
-    conn.execute(
-        "DELETE FROM terms WHERE term_set_id = ?1",
-        [&termset_to_delete],
-    )?;
+    let sql = format!("DELETE FROM {} WHERE term_set_id = ?1", db_info.table_name);
+
+    conn.execute(&sql, [&termset_to_delete])?;
 
     Ok(())
 }
 
-pub fn extract_and_insert_unique_values(db_name: &str) -> Result<()> {
-    let conn = connect_db(db_name);
+pub fn extract_and_insert_unique_values(State(db_info): State<Arc<DbInfo>>) -> Result<()> {
+    let conn = connect_db(State(db_info.clone()));
 
     conn.execute("BEGIN;", params![])?;
 
@@ -359,67 +400,77 @@ pub fn extract_and_insert_unique_values(db_name: &str) -> Result<()> {
     conn.execute("DELETE FROM unique_users;", params![])?;
     conn.execute("DELETE FROM unique_attributes;", params![])?;
 
+    let table = &db_info.table_name;
+
     conn.execute(
-        "
-        INSERT OR IGNORE INTO unique_languages (language)
-        SELECT DISTINCT language FROM terms;
-        ",
+        &format!(
+            "INSERT OR IGNORE INTO unique_languages (language)
+             SELECT DISTINCT language FROM {};",
+            table
+        ),
         params![],
     )?;
 
     conn.execute(
-        "
-        INSERT OR IGNORE INTO unique_term_types (term_type)
-        SELECT DISTINCT term_type FROM terms;
-        ",
+        &format!(
+            "INSERT OR IGNORE INTO unique_term_types (term_type)
+             SELECT DISTINCT term_type FROM {};",
+            table
+        ),
         params![],
     )?;
 
     conn.execute(
-        "
-        INSERT OR IGNORE INTO unique_creator_ids (creator_id)
-        SELECT DISTINCT creator_id FROM terms;
-        ",
+        &format!(
+            "INSERT OR IGNORE INTO unique_creator_ids (creator_id)
+             SELECT DISTINCT creator_id FROM {};",
+            table
+        ),
         params![],
     )?;
 
     conn.execute(
-        "
-        INSERT OR IGNORE INTO unique_updater_ids (updater_id)
-        SELECT DISTINCT updater_id FROM terms;
-        ",
+        &format!(
+            "INSERT OR IGNORE INTO unique_updater_ids (updater_id)
+             SELECT DISTINCT updater_id FROM {};",
+            table
+        ),
         params![],
     )?;
 
     conn.execute(
-        "
-        INSERT OR IGNORE INTO unique_subjects (subject)
-        SELECT DISTINCT subject FROM terms;
-        ",
+        &format!(
+            "INSERT OR IGNORE INTO unique_subjects (subject)
+             SELECT DISTINCT subject FROM {};",
+            table
+        ),
         params![],
     )?;
 
     conn.execute(
-        "
-        INSERT OR IGNORE INTO unique_sources (source)
-        SELECT DISTINCT source FROM terms;
-        ",
+        &format!(
+            "INSERT OR IGNORE INTO unique_sources (source)
+             SELECT DISTINCT source FROM {};",
+            table
+        ),
         params![],
     )?;
 
     conn.execute(
-        "
-        INSERT OR IGNORE INTO unique_users (user)
-        SELECT DISTINCT user FROM terms;
-        ",
+        &format!(
+            "INSERT OR IGNORE INTO unique_users (user)
+             SELECT DISTINCT user FROM {};",
+            table
+        ),
         params![],
     )?;
 
     conn.execute(
-        "
-        INSERT OR IGNORE INTO unique_attributes (attributes)
-        SELECT DISTINCT attributes FROM terms;
-        ",
+        &format!(
+            "INSERT OR IGNORE INTO unique_attributes (attributes)
+             SELECT DISTINCT attributes FROM {};",
+            table
+        ),
         params![],
     )?;
 
@@ -439,14 +490,19 @@ pub fn handle_insert_unique_values_result(result: Result<()>) {
     }
 }
 
-pub fn init_db(db_name: &str) {
-    create_terms_table(db_name);
-    create_unique_values_tables(db_name);
+pub fn init_db(State(db_info): State<Arc<DbInfo>>) {
+    let state_clone_terms = State(db_info.clone());
+    let state_clone_value = State(db_info.clone());
+    create_terms_table(state_clone_terms);
+    create_unique_values_tables(state_clone_value);
 }
 
-pub fn get_all_terms(db_name: &str) -> Result<Vec<TermsList>, rusqlite::Error> {
-    let conn = connect_db(db_name);
-    let mut stmt = conn.prepare(
+pub fn get_all_terms(
+    State(db_info): State<Arc<DbInfo>>,
+) -> Result<Vec<TermsList>, rusqlite::Error> {
+    let conn = connect_db(State(db_info.clone()));
+
+    let sql = format!(
         "SELECT 
             term_id,
             term_set_id, 
@@ -465,8 +521,11 @@ pub fn get_all_terms(db_name: &str) -> Result<Vec<TermsList>, rusqlite::Error> {
             url, 
             context, 
             definition 
-        FROM terms",
-    )?;
+        FROM {}",
+        db_info.table_name
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
 
     let dictionary_iter = stmt.query_map([], |row| {
         Ok(TermsList {
@@ -492,12 +551,11 @@ pub fn get_all_terms(db_name: &str) -> Result<Vec<TermsList>, rusqlite::Error> {
         })
     })?;
 
-    let terms: Result<Vec<TermsList>, rusqlite::Error> = dictionary_iter.collect();
-    terms
+    dictionary_iter.collect()
 }
 
-pub fn get_max_id_terms(db_name: &str) -> Result<i32, String> {
-    let hid = get_max_term_id(db_name);
+pub fn get_max_id_terms(State(db_info): State<Arc<DbInfo>>) -> Result<i32, String> {
+    let hid = get_max_term_id(State(db_info));
 
     match hid {
         Ok(val) => Ok(val),
@@ -505,8 +563,8 @@ pub fn get_max_id_terms(db_name: &str) -> Result<i32, String> {
     }
 }
 
-pub fn get_max_id_termsets(db_name: &str) -> Result<i32, String> {
-    let hid = get_max_term_set_id(db_name);
+pub fn get_max_id_termsets(State(db_info): State<Arc<DbInfo>>) -> Result<i32, String> {
+    let hid = get_max_term_set_id(State(db_info));
 
     match hid {
         Ok(val) => Ok(val),
@@ -514,51 +572,61 @@ pub fn get_max_id_termsets(db_name: &str) -> Result<i32, String> {
     }
 }
 
-pub fn get_max_term_id(db_name: &str) -> Result<i32, rusqlite::Error> {
-    let conn = connect_db(db_name);
-    let mut stmt = conn
-        .prepare("SELECT COALESCE(MAX(term_id), 0) FROM terms")
-        .unwrap();
+pub fn get_max_term_id(State(db_info): State<Arc<DbInfo>>) -> Result<i32, rusqlite::Error> {
+    let conn = connect_db(State(db_info.clone()));
+    let sql = format!(
+        "SELECT COALESCE(MAX(term_id), 0) FROM {}",
+        db_info.table_name
+    );
 
-    let highest_id: i32 = stmt.query_row([], |row| row.get(0)).unwrap();
+    let mut stmt = conn.prepare(&sql)?;
+    let highest_id: i32 = stmt.query_row([], |row| row.get(0))?;
     Ok(highest_id)
 }
 
-pub fn get_max_term_set_id(db_name: &str) -> Result<i32, rusqlite::Error> {
-    let conn = connect_db(db_name);
-    let mut stmt = conn
-        .prepare("SELECT COALESCE(MAX(term_set_id), 0) FROM terms")
-        .unwrap();
+pub fn get_max_term_set_id(State(db_info): State<Arc<DbInfo>>) -> Result<i32, rusqlite::Error> {
+    let conn = connect_db(State(db_info.clone()));
+    let sql = format!(
+        "SELECT COALESCE(MAX(term_set_id), 0) FROM {}",
+        db_info.table_name
+    );
 
-    let highest_id: i32 = stmt.query_row([], |row| row.get(0)).unwrap();
+    let mut stmt = conn.prepare(&sql)?;
+    let highest_id: i32 = stmt.query_row([], |row| row.get(0))?;
     Ok(highest_id)
 }
 
-pub fn get_term_by_id(db_name: &str, term_id: i32) -> Result<Option<TermsList>, rusqlite::Error> {
-    let conn = connect_db(db_name);
+pub fn get_term_by_id(
+    State(db_info): State<Arc<DbInfo>>,
+    term_id: i32,
+) -> Result<Option<TermsList>, rusqlite::Error> {
+    let conn = connect_db(State(db_info.clone()));
 
-    let sql = "SELECT 
-                    term_id,
-                    term_set_id, 
-                    term, 
-                    language, 
-                    term_type, 
-                    creator_id, 
-                    creation_timestamp, 
-                    updater_id, 
-                    update_timestamp, 
-                    subject, 
-                    source, 
-                    user, 
-                    attributes, 
-                    remark, 
-                    url, 
-                    context, 
-                    definition 
-                FROM terms 
-                WHERE term_id = ?";
-    let mut stmt = conn.prepare(sql)?;
+    let sql = format!(
+        "SELECT 
+            term_id,
+            term_set_id, 
+            term, 
+            language, 
+            term_type, 
+            creator_id, 
+            creation_timestamp, 
+            updater_id, 
+            update_timestamp, 
+            subject, 
+            source, 
+            user, 
+            attributes, 
+            remark, 
+            url, 
+            context, 
+            definition 
+        FROM {} 
+        WHERE term_id = ?",
+        db_info.table_name
+    );
 
+    let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query([term_id])?;
 
     if let Some(row) = rows.next()? {
@@ -590,14 +658,18 @@ pub fn get_term_by_id(db_name: &str, term_id: i32) -> Result<Option<TermsList>, 
 }
 
 pub fn get_term_set_id(
-    db_name: &str,
+    State(db_info): State<Arc<DbInfo>>,
     term: &str,
     language: &str,
 ) -> Result<Option<i32>, rusqlite::Error> {
-    let conn = Connection::open(db_name)?;
+    let conn = connect_db(State(db_info.clone()));
 
-    let mut stmt = conn.prepare("SELECT term_set_id FROM terms WHERE term = ? AND language = ?")?;
+    let sql = format!(
+        "SELECT term_set_id FROM {} WHERE term = ? AND language = ?",
+        db_info.table_name
+    );
 
+    let mut stmt = conn.prepare(&sql)?;
     let term_set_id: Option<i32> = stmt
         .query_row(params![term, language], |row| row.get(0))
         .optional()?;
@@ -606,47 +678,57 @@ pub fn get_term_set_id(
 }
 
 pub fn get_term_set_id_by_term_id(
-    db_name: &str,
+    State(db_info): State<Arc<DbInfo>>,
     term_id: i32,
 ) -> Result<Option<i32>, rusqlite::Error> {
-    let conn = connect_db(db_name);
-    let mut stmt = conn.prepare("SELECT term_set_id FROM terms WHERE term_id = ? LIMIT 1")?;
+    let conn = connect_db(State(db_info.clone()));
+
+    let sql = format!(
+        "SELECT term_set_id FROM {} WHERE term_id = ? LIMIT 1",
+        db_info.table_name
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
     let term_set_id: Option<i32> = stmt
         .query_row(params![term_id], |row| row.get(0))
         .optional()?;
+
     Ok(term_set_id)
 }
 
 pub fn search_terms(
-    db_name: &str,
+    State(db_info): State<Arc<DbInfo>>,
     term_select: &str,
     language_select: &str,
 ) -> Result<Vec<TermsList>, rusqlite::Error> {
-    let conn = connect_db(db_name);
+    let conn = connect_db(State(db_info.clone()));
 
-    let sql = "SELECT 
-                    term_id,
-                    term_set_id,                         
-                    term, 
-                    language,
-                    term_type, 
-                    creator_id, 
-                    creation_timestamp, 
-                    updater_id, 
-                    update_timestamp, 
-                    subject, 
-                    source, 
-                    user, 
-                    attributes, 
-                    remark, 
-                    url, 
-                    context, 
-                    definition 
-               FROM terms 
-               WHERE (term LIKE ? OR subject LIKE ? OR remark LIKE ? OR context LIKE ? OR definition LIKE ?) 
-                 AND language LIKE ?";
+    let sql = format!(
+        "SELECT 
+            term_id,
+            term_set_id,
+            term,
+            language,
+            term_type,
+            creator_id,
+            creation_timestamp,
+            updater_id,
+            update_timestamp,
+            subject,
+            source,
+            user,
+            attributes,
+            remark,
+            url,
+            context,
+            definition
+        FROM {}
+        WHERE (term LIKE ? OR subject LIKE ? OR remark LIKE ? OR context LIKE ? OR definition LIKE ?)
+          AND language LIKE ?",
+        db_info.table_name
+    );
 
-    let mut stmt = conn.prepare(sql)?;
+    let mut stmt = conn.prepare(&sql)?;
 
     let fuzzy_term = format!("%{}%", term_select);
     let fuzzy_language = format!("%{}%", language_select);
@@ -684,16 +766,16 @@ pub fn search_terms(
         })
     })?;
 
-    let terms: Vec<TermsList> = dictionary_iter.collect::<Result<_, _>>()?;
-    Ok(terms)
+    dictionary_iter.collect()
 }
 
 pub fn search_terms_by_term_set_id(
-    db_name: &str,
+    State(db_info): State<Arc<DbInfo>>,
     term_set_id: i32,
 ) -> Result<Vec<TermsList>, rusqlite::Error> {
-    let conn = connect_db(db_name);
-    let mut stmt = conn.prepare(
+    let conn = connect_db(State(db_info.clone()));
+
+    let sql = format!(
         "SELECT 
             term_id, 
             term_set_id, 
@@ -712,9 +794,12 @@ pub fn search_terms_by_term_set_id(
             url, 
             context, 
             definition 
-        FROM terms 
+        FROM {} 
         WHERE term_set_id = ?",
-    )?;
+        db_info.table_name
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
 
     let terms_iter = stmt.query_map(params![term_set_id], |row| {
         Ok(TermsList {
@@ -740,19 +825,19 @@ pub fn search_terms_by_term_set_id(
         })
     })?;
 
-    let terms: Vec<TermsList> = terms_iter.collect::<Result<_, _>>()?;
-    Ok(terms)
+    terms_iter.collect()
 }
 
 pub fn update_term(
-    db_name: &str,
+    State(db_info): State<Arc<DbInfo>>,
     term_id_to_update: i32,
     termset_update: &TermLanguageSet,
 ) -> Result<(), rusqlite::Error> {
-    let conn = connect_db(db_name);
+    let conn = connect_db(State(db_info.clone()));
 
-    let query = "
-        UPDATE terms 
+    let query = format!(
+        "
+        UPDATE {} 
         SET 
             term = COALESCE(?2, term),
             language = COALESCE(?3, language),
@@ -770,10 +855,12 @@ pub fn update_term(
             context = COALESCE(?15, context),
             definition = COALESCE(?16, definition)
         WHERE term_id = ?1
-    ";
+        ",
+        db_info.table_name
+    );
 
     conn.execute(
-        query,
+        &query,
         params![
             term_id_to_update,
             termset_update.term.as_deref(),
@@ -788,7 +875,7 @@ pub fn update_term(
             termset_update.user.as_deref(),
             termset_update.attributes.as_deref(),
             termset_update.remark.as_deref(),
-            termset_update.url.as_deref(), // Handle optional URL
+            termset_update.url.as_deref(),
             termset_update.context.as_deref(),
             termset_update.definition.as_deref(),
         ],
