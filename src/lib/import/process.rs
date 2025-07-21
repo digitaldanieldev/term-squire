@@ -26,7 +26,7 @@ pub fn create_term_to_insert(term: &TermLanguageSet) -> TermLanguageSet {
     }
 }
 pub async fn import_dictionary_data(
-    State(db_info): State<Arc<DbInfo>>,
+    State(app_state): State<Arc<AppState>>,
     filename: &str,
 ) -> Result<(), String> {
     info!("Importing dictionary from file: {}", filename);
@@ -36,33 +36,36 @@ pub async fn import_dictionary_data(
 
     let _ = dictionary.serialize_to_json("processed_dictionary.json");
 
-    create_terms_table(State(db_info.clone()));
+    create_terms_table(State(app_state.clone()));
 
     for dt in &dictionary.entries {
-        if let Err(err) = process_term_set(State(db_info.clone()), dt) {
+        if let Err(err) = process_term_set(State(app_state.clone()), dt) {
             error!("Error processing term set: {}", err);
             return Err(err.to_string());
         }
     }
 
-    let unique_values_result = extract_and_insert_unique_values(State(db_info.clone()));
+    let unique_values_result = extract_and_insert_unique_values(State(app_state.clone()));
     handle_insert_unique_values_result(unique_values_result);
 
     info!("Dictionary import completed");
     Ok(())
 }
 
-pub fn process_term_set(State(db_info): State<Arc<DbInfo>>, dt: &DictionaryEntry) -> Result<()> {
+pub fn process_term_set(
+    State(app_state): State<Arc<AppState>>,
+    dt: &DictionaryEntry,
+) -> Result<()> {
     info!("Processing term set: {:?}", dt.id);
 
     match dt.language_sets.len() {
         2 => process_two_terms(
-            State(db_info.clone()),
+            State(app_state.clone()),
             &dt.language_sets[0],
             &dt.language_sets[1],
         ),
-        1 => process_single_term(State(db_info.clone()), &dt.language_sets[0]),
-        n if n > 2 => process_three_or_more_terms(State(db_info.clone()), &dt.language_sets),
+        1 => process_single_term(State(app_state.clone()), &dt.language_sets[0]),
+        n if n > 2 => process_three_or_more_terms(State(app_state.clone()), &dt.language_sets),
         _ => {
             error!("Unexpected number of terms in term set");
             Ok(())
@@ -71,20 +74,20 @@ pub fn process_term_set(State(db_info): State<Arc<DbInfo>>, dt: &DictionaryEntry
 }
 
 pub fn process_single_term(
-    State(db_info): State<Arc<DbInfo>>,
+    State(app_state): State<Arc<AppState>>,
     term: &TermLanguageSet,
 ) -> Result<()> {
     let term_to_insert = create_term_to_insert(term);
     info!("Inserting single term: {:?}", term_to_insert);
 
-    if let Err(err) = add_term(State(db_info), &term_to_insert) {
+    if let Err(err) = add_term(State(app_state.clone()), &term_to_insert) {
         error!("Failed to insert single term: {}", err);
         return Err(err);
     }
     Ok(())
 }
 pub fn process_two_terms(
-    State(db_info): State<Arc<DbInfo>>,
+    State(app_state): State<Arc<AppState>>,
     first_term: &TermLanguageSet,
     second_term: &TermLanguageSet,
 ) -> Result<()> {
@@ -104,13 +107,13 @@ pub fn process_two_terms(
     };
 
     info!("Inserting primary term: {:?}", primary_term);
-    if let Err(err) = add_term(State(db_info.clone()), &primary_term) {
+    if let Err(err) = add_term(State(app_state.clone()), &primary_term) {
         error!("Failed to insert primary term: {}", err);
         return Err(err);
     }
 
     let term_set_id = get_term_set_id(
-        State(db_info.clone()),
+        State(app_state.clone()),
         primary_term.term.as_ref().unwrap(),
         primary_term.language.as_ref().unwrap(),
     )?;
@@ -121,7 +124,7 @@ pub fn process_two_terms(
             "Inserting secondary term into term set: {:?}",
             secondary_term
         );
-        if let Err(err) = add_term_to_term_set(State(db_info), id, &secondary_term) {
+        if let Err(err) = add_term_to_term_set(State(app_state.clone()), id, &secondary_term) {
             error!("Failed to add secondary term to set: {}", err);
             return Err(err);
         }
@@ -137,7 +140,7 @@ pub fn process_two_terms(
 }
 
 pub fn process_three_or_more_terms(
-    State(db_info): State<Arc<DbInfo>>,
+    State(app_state): State<Arc<AppState>>,
     terms: &[TermLanguageSet],
 ) -> Result<()> {
     let mut term_set_id: Option<i32> = None;
@@ -149,10 +152,10 @@ pub fn process_three_or_more_terms(
         if term_to_insert.term.is_some() {
             info!("Inserting primary term: {:?}", term_to_insert);
 
-            add_term(State(db_info.clone()), &term_to_insert)?;
+            add_term(State(app_state.clone()), &term_to_insert)?;
 
             term_set_id = get_term_set_id(
-                State(db_info.clone()),
+                State(app_state.clone()),
                 term_to_insert.term.as_ref().unwrap(),
                 term_to_insert.language.as_ref().unwrap(),
             )?;
@@ -193,7 +196,7 @@ pub fn process_three_or_more_terms(
             "Adding term {} to set ID {}: {:?}",
             i, term_set_id, term_to_insert
         );
-        add_term_to_term_set(State(db_info.clone()), term_set_id, &term_to_insert)?;
+        add_term_to_term_set(State(app_state.clone()), term_set_id, &term_to_insert)?;
     }
 
     Ok(())
