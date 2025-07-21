@@ -512,7 +512,6 @@ pub fn init_db(State(app_state): State<Arc<AppState>>) -> Result<()> {
     let all_terms = get_all_terms(State(app_state.clone()))?;
 
     {
-        // Populate app_state cache
         let mut cache = app_state.terms_cache.lock().unwrap();
         *cache = Some(all_terms.clone());
         debug!(
@@ -522,7 +521,6 @@ pub fn init_db(State(app_state): State<Arc<AppState>>) -> Result<()> {
     }
 
     {
-        // Populate global request-level SEARCH_CACHE with all terms under wildcard key "*:*"
         let mut search_cache = SEARCH_CACHE.write().unwrap();
         search_cache.insert("*:*".to_string(), all_terms);
         debug!("SEARCH_CACHE wildcard '*:*' populated with all terms.");

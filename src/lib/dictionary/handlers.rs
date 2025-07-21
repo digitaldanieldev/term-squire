@@ -32,19 +32,16 @@ use crate::{
     import::{parse::TermLanguageSet, process::import_dictionary_data},
 };
 
-// cache to store search results.
 lazy_static! {
     pub static ref SEARCH_CACHE: RwLock<HashMap<String, Vec<TermsList>>> =
         RwLock::new(HashMap::new());
 }
 
-// clears the search cache
 pub fn clear_cache() {
     info!("Clearing cache");
     SEARCH_CACHE.write().unwrap().clear();
 }
 
-// add term set to term
 #[derive(Debug, Deserialize)]
 pub struct AddTermSetRequest {
     existing_term_set_id: i32,
@@ -90,7 +87,6 @@ pub async fn handle_add_term_set(
     }
 }
 
-// delete term
 #[derive(Debug, Deserialize)]
 pub struct DeleteTermRequest {
     term_id: i32,
@@ -159,7 +155,6 @@ pub async fn handle_delete_term(
     }
 }
 
-// insert term
 #[derive(Debug, Deserialize)]
 pub struct InsertTermRequest {
     term_language_set: TermLanguageSet,
@@ -181,25 +176,20 @@ pub async fn handle_insert_term(
         Ok(_) => {
             info!("Term inserted successfully.");
 
-            // Clear the global SEARCH_CACHE
             clear_cache();
 
-            // Reload all terms from DB and update caches
             match get_all_terms(State(app_state.clone())) {
                 Ok(all_terms) => {
                     {
-                        // Update app_state cache
                         let mut cache = app_state.terms_cache.lock().unwrap();
                         *cache = Some(all_terms.clone());
                     }
 
                     {
-                        // Repopulate global SEARCH_CACHE wildcard key
                         let mut search_cache = SEARCH_CACHE.write().unwrap();
                         search_cache.insert("*:*".to_string(), all_terms);
                     }
 
-                    // Optionally update unique values cache
                     let _ = extract_and_insert_unique_values(State(app_state.clone()));
 
                     (
@@ -228,7 +218,7 @@ pub async fn handle_insert_term(
         }
     }
 }
-// import dictionary data
+
 pub async fn handle_import_dictionary_data(
     State(app_state): State<Arc<AppState>>,
     mut multipart: Multipart,
@@ -326,25 +316,20 @@ pub async fn handle_import_dictionary_data(
                     .into_response();
             }
 
-            // Clear cache after import
             clear_cache();
 
-            // Repopulate caches
             match get_all_terms(State(app_state.clone())) {
                 Ok(all_terms) => {
                     {
-                        // Update app_state cache
                         let mut cache = app_state.terms_cache.lock().unwrap();
                         *cache = Some(all_terms.clone());
                     }
 
                     {
-                        // Repopulate global SEARCH_CACHE wildcard key
                         let mut search_cache = SEARCH_CACHE.write().unwrap();
                         search_cache.insert("*:*".to_string(), all_terms);
                     }
 
-                    // Optionally update unique values cache
                     let _ = extract_and_insert_unique_values(State(app_state.clone()));
 
                     info!("Cache repopulated after dictionary import.");
@@ -368,7 +353,7 @@ pub async fn handle_import_dictionary_data(
 
     (StatusCode::BAD_REQUEST, "No file was uploaded".to_string()).into_response()
 }
-// import dictionary file
+
 #[derive(Template)]
 #[template(path = "import_form.html")]
 struct ImportFormTemplate;
@@ -397,7 +382,6 @@ pub async fn handle_insert_form() -> impl IntoResponse {
     )
 }
 
-// settings
 #[derive(Deserialize)]
 pub struct SettingsForm {
     columns: Vec<String>,
@@ -443,14 +427,12 @@ pub async fn handle_get_settings() -> impl IntoResponse {
     )
 }
 
-// terms
 #[derive(Template)]
 #[template(path = "terms.html")]
 pub struct TermsTemplate {
     pub terms: Vec<TermsList>,
 }
 pub async fn handle_terms(State(app_state): State<Arc<AppState>>) -> Html<String> {
-    // Try reading from cache
     if let Some(cached_terms) = app_state.terms_cache.lock().unwrap().as_ref() {
         let template = TermsTemplate {
             terms: cached_terms.clone(),
@@ -462,10 +444,8 @@ pub async fn handle_terms(State(app_state): State<Arc<AppState>>) -> Html<String
         );
     }
 
-    // Cache miss: query DB synchronously
     match get_all_terms(State(app_state.clone())) {
         Ok(terms) => {
-            // Update the cache
             *app_state.terms_cache.lock().unwrap() = Some(terms.clone());
 
             let template = TermsTemplate { terms };
@@ -482,7 +462,6 @@ pub async fn handle_terms(State(app_state): State<Arc<AppState>>) -> Html<String
     }
 }
 
-// term details
 #[derive(Debug, Deserialize)]
 pub struct TermDetailRequest {
     term_id: i32,
@@ -523,7 +502,6 @@ pub async fn handle_get_term_details(
     }
 }
 
-// search terms list
 #[derive(Debug, Deserialize)]
 pub struct SearchRequest {
     term: String,
@@ -570,7 +548,7 @@ pub async fn handle_search_terms(
                 .cloned()
                 .collect();
 
-            drop(search_cache_read); // drop read lock before write lock
+            drop(search_cache_read);
 
             SEARCH_CACHE
                 .write()
@@ -639,7 +617,6 @@ pub async fn handle_search_terms_by_term_set_id(
     }
 }
 
-// update term
 #[derive(Debug, Deserialize)]
 pub struct UpdateTermRequest {
     term_id: i32,
@@ -663,22 +640,18 @@ pub async fn handle_update_term(
             info!("Term updated successfully.");
             clear_cache();
 
-            // Repopulate caches after update
             match get_all_terms(State(app_state.clone())) {
                 Ok(all_terms) => {
                     {
-                        // Update app_state cache
                         let mut cache = app_state.terms_cache.lock().unwrap();
                         *cache = Some(all_terms.clone());
                     }
 
                     {
-                        // Repopulate global SEARCH_CACHE wildcard key
                         let mut search_cache = SEARCH_CACHE.write().unwrap();
                         search_cache.insert("*:*".to_string(), all_terms);
                     }
 
-                    // Optionally update unique values cache
                     let _unique_values_result =
                         extract_and_insert_unique_values(State(app_state.clone()));
 
@@ -709,7 +682,7 @@ pub async fn handle_update_term(
         }
     }
 }
-// manage database
+
 #[derive(Template)]
 #[template(path = "database_management.html")]
 struct DatabaseManagementTemplate;
@@ -724,7 +697,6 @@ pub async fn handle_database_management() -> Html<String> {
     )
 }
 
-// download the database
 pub async fn handle_download_db_file(State(app_state): State<Arc<AppState>>) -> impl IntoResponse {
     let path = &app_state.db_info.path();
 
@@ -840,17 +812,14 @@ pub async fn handle_upload_db_file(
 
         clear_cache();
 
-        // Repopulate caches after DB upload
         match get_all_terms(State(app_state.clone())) {
             Ok(all_terms) => {
                 {
-                    // Update app_state cache
                     let mut cache = app_state.terms_cache.lock().unwrap();
                     *cache = Some(all_terms.clone());
                 }
 
                 {
-                    // Repopulate global SEARCH_CACHE wildcard key
                     let mut search_cache = SEARCH_CACHE.write().unwrap();
                     search_cache.insert("*:*".to_string(), all_terms);
                 }
