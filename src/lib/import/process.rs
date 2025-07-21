@@ -103,7 +103,7 @@ pub fn process_two_terms(
             "Both terms are missing 'term' values: {:?}, {:?}",
             first_term_to_insert, second_term_to_insert
         );
-        return Err(rusqlite::Error::InvalidQuery); // use appropriate rusqlite error if needed
+        return Err(rusqlite::Error::InvalidQuery);
     };
 
     info!("Inserting primary term: {:?}", primary_term);
