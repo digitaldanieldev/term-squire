@@ -2,10 +2,8 @@ use axum::extract::{DefaultBodyLimit, State};
 use axum::routing::{delete, get, post};
 use axum::Router;
 use clap::{arg, command, Parser};
-use std::sync::{Arc, Mutex};
-use term_squire::constants::CURRENT_DB_NAME;
 use term_squire::dictionary::{database::*, handlers::*};
-use term_squire::logging::*;
+use term_squire::init::*;
 use tracing::info;
 
 /// simple dictionary
@@ -26,24 +24,11 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
-    let log_level = parse_log_level(&args.log_level)?;
-    let _ = load_logging_config(log_level);
 
-    let db_info = Arc::new(DbInfo {
-        dir: if args.data_dir.is_empty() {
-            "/data/term-squire-data".to_string()
-        } else {
-            args.data_dir.clone()
-        },
-        name: CURRENT_DB_NAME.to_string(),
-        table_name: "terms".to_string(),
-    });
+    init_logging(&args.log_level)?;
 
-    let app_state = Arc::new(AppState {
-        db_info: db_info.clone(),
-        terms_cache: Arc::new(Mutex::new(None)),
-    });
-
+    let db_info = init_db_info(args.data_dir.clone(), None)?;
+    let app_state = init_app_state(db_info.clone())?;
     init_db(State(app_state.clone()))?;
 
     let app = Router::new()
@@ -73,6 +58,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .await
         .unwrap();
     info!("Starting server on port {}", args.port);
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app).await?;
     Ok(())
 }
