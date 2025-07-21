@@ -28,7 +28,7 @@ For a quick start, you can import `example.mtf` for testing.
    Set the port number for accessing Term-squire. *(Default: 1234)*
 - **`-d --data_dir`**  
    Set the database location. *(Default: /data/term-squire-data)*
-- **`- --log_level`**  
+- **`-l --log_level`**  
    Set the logging level. *(Default: "info")*
    Available options: ["error, warn, info, debug, trace"]
 - **`-h --help`**  
