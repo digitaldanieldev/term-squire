@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     use axum::extract::State;
     use lazy_static::lazy_static;
@@ -14,7 +14,7 @@ mod tests {
         static ref TEST_DB_INFO: Arc<DbInfo> = Arc::new(DbInfo {
             dir: "/data/term-squire-data".to_string(),
             name: TEST_DB_NAME.to_string(),
-            table_name: "terms".to_string(),
+            table_name: "termsi".to_string(),
         });
     }
 
@@ -89,223 +89,222 @@ mod tests {
         };
     }
 
-    fn create_test_db(test_name: &str) -> Arc<DbInfo> {
+    fn create_test_app_state(test_name: &str) -> Arc<AppState> {
         let base_dir = "/data/term-squire-data";
-        let db_path = format!("{}/{}.sqlite", base_dir, test_name);
-
-        // Remove any existing file (optional safety)
-        let _ = std::fs::remove_file(&db_path);
-
-        let db_info = DbInfo {
+        let db_info = Arc::new(DbInfo {
             dir: base_dir.to_string(),
             name: test_name.to_string(),
             table_name: "terms".to_string(),
-        };
+        });
 
-        let db_info = Arc::new(db_info);
-        let state = State(db_info.clone());
+        let _ = std::fs::remove_file(&db_info.path());
 
-        create_terms_table(state);
+        let app_state = Arc::new(AppState {
+            db_info: db_info.clone(),
+            terms_cache: Arc::new(Mutex::new(None)),
+        });
 
-        db_info
+        create_terms_table(State(app_state.clone()));
+
+        app_state
     }
-
-    fn remove_test_db(db_info: &Arc<DbInfo>) {
-        std::fs::remove_file(&db_info.path()).unwrap_or_else(|_| {
-            panic!("Failed to delete database {}", db_info.path());
+    fn remove_test_db(app_state: &Arc<AppState>) {
+        std::fs::remove_file(&app_state.db_info.path()).unwrap_or_else(|_| {
+            panic!("Failed to delete database {}", app_state.db_info.path());
         });
     }
 
     fn add_term_wrapper(
-        db_info: &Arc<DbInfo>,
+        app_state: &Arc<AppState>,
         term_set: &TermLanguageSet,
     ) -> Result<(), rusqlite::Error> {
-        add_term(State(db_info.clone()), term_set)
+        add_term(State(app_state.clone()), term_set)
     }
 
-    fn assert_term_exists(db_info: &Arc<DbInfo>, term: &str, language: &str) {
-        let terms = search_terms(State(db_info.clone()), term, language).expect("Search failed");
+    fn assert_term_exists(app_state: &Arc<AppState>, term: &str, language: &str) {
+        let terms = search_terms(State(app_state.clone()), term, language).expect("Search failed");
         assert_eq!(terms.len(), 1);
         assert_eq!(terms[0].term_language_set.term.as_deref(), Some(term));
     }
 
     #[test]
-    fn test_create_tables() {
-        let db_info = create_test_db("test_create_tables");
-        let conn = connect_db(State(db_info.clone()));
+    fn test_create_tables() -> Result<(), Box<dyn std::error::Error>> {
+        let app_state = create_test_app_state("test_create_tables");
+
+        let conn = connect_db(State(app_state.clone()))?;
         let table_exists = conn
-            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='terms'")
-            .unwrap()
-            .query_row([], |_| Ok(true))
-            .unwrap();
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='terms'")?
+            .query_row([], |_| Ok(true))?;
 
         assert!(table_exists);
-        remove_test_db(&db_info);
+        remove_test_db(&app_state);
+        Ok(())
     }
 
     #[test]
     fn test_insert_and_retrieve_termset() {
-        let db_info = create_test_db("test_insert_and_retrieve_termset");
-        let insert_result = add_term_wrapper(&db_info, &TERM_SET_1);
+        let app_state = create_test_app_state("test_insert_and_retrieve_termset");
+
+        let insert_result = add_term_wrapper(&app_state, &TERM_SET_1);
         assert!(insert_result.is_ok());
-        assert_term_exists(&db_info, "term_1", "en");
-        remove_test_db(&db_info);
+        assert_term_exists(&app_state, "term_1", "en");
+        remove_test_db(&app_state);
     }
 
     #[test]
     fn test_db_get_term_set_id_by_term_and_language() {
-        let db_info = create_test_db("test_db_get_term_id_by_term");
-        add_term_wrapper(&db_info, &TERM_SET_1).unwrap();
-        assert_term_exists(&db_info, "term_1", "en");
+        let app_state = create_test_app_state("test_db_get_term_id_by_term");
+        add_term_wrapper(&app_state, &TERM_SET_1).unwrap();
+        assert_term_exists(&app_state, "term_1", "en");
 
-        let term_set_id = get_term_set_id(State(db_info.clone()), "term_1", "en").unwrap();
+        let term_set_id = get_term_set_id(State(app_state.clone()), "term_1", "en").unwrap();
         assert_eq!(term_set_id.unwrap(), 1);
-        remove_test_db(&db_info);
+        remove_test_db(&app_state);
     }
 
     #[test]
     fn test_db_get_term_set_id_by_term_id() {
-        let db_info = create_test_db("test_db_get_term_set_id_by_term_id");
-        add_term_wrapper(&db_info, &TERM_SET_1).unwrap();
-        assert_term_exists(&db_info, "term_1", "en");
+        let app_state = create_test_app_state("test_db_get_term_set_id_by_term_id");
+        add_term_wrapper(&app_state, &TERM_SET_1).unwrap();
+        assert_term_exists(&app_state, "term_1", "en");
 
-        let term_set_id = get_term_set_id_by_term_id(State(db_info.clone()), 1).unwrap();
+        let term_set_id = get_term_set_id_by_term_id(State(app_state.clone()), 1).unwrap();
         assert_eq!(term_set_id.unwrap(), 1);
-        remove_test_db(&db_info);
+        remove_test_db(&app_state);
     }
 
     #[test]
     fn test_db_add_termset_to_term() {
-        let db_info = create_test_db("test_db_add_termset_to_term");
-        add_term_wrapper(&db_info, &TERM_SET_1).unwrap();
-        assert_term_exists(&db_info, "term_1", "en");
+        let app_state = create_test_app_state("test_db_add_termset_to_term");
+        add_term_wrapper(&app_state, &TERM_SET_1).unwrap();
+        assert_term_exists(&app_state, "term_1", "en");
 
-        let term_set_id = get_term_set_id(State(db_info.clone()), "term_1", "en")
+        let term_set_id = get_term_set_id(State(app_state.clone()), "term_1", "en")
             .unwrap()
             .unwrap();
-        let add_result = add_term_to_term_set(State(db_info.clone()), term_set_id, &TERM_SET_2);
+        let add_result = add_term_to_term_set(State(app_state.clone()), term_set_id, &TERM_SET_2);
         assert!(add_result.is_ok());
-        remove_test_db(&db_info);
+        remove_test_db(&app_state);
     }
 
     #[test]
     fn test_db_update_termset() {
-        let db_info = create_test_db("test_db_update_termset");
-        add_term_wrapper(&db_info, &TERM_SET_1).unwrap();
-        assert_term_exists(&db_info, "term_1", "en");
+        let app_state = create_test_app_state("test_db_update_termset");
+        add_term_wrapper(&app_state, &TERM_SET_1).unwrap();
+        assert_term_exists(&app_state, "term_1", "en");
 
-        let term_set_id = get_term_set_id(State(db_info.clone()), "term_1", "en")
+        let term_set_id = get_term_set_id(State(app_state.clone()), "term_1", "en")
             .unwrap()
             .unwrap();
-        let update_result = update_term(State(db_info.clone()), term_set_id, &TERM_SET_2);
+        let update_result = update_term(State(app_state.clone()), term_set_id, &TERM_SET_2);
         assert!(update_result.is_ok());
-        assert_term_exists(&db_info, "term_2", "nl");
-        remove_test_db(&db_info);
+        assert_term_exists(&app_state, "term_2", "nl");
+        remove_test_db(&app_state);
     }
 
     #[test]
     fn test_db_get_data_all() {
-        let db_info = create_test_db("test_db_get_data_all");
-        add_term_wrapper(&db_info, &TERM_SET_1).unwrap();
-        add_term_wrapper(&db_info, &TERM_SET_2).unwrap();
+        let app_state = create_test_app_state("test_db_get_data_all");
+        add_term_wrapper(&app_state, &TERM_SET_1).unwrap();
+        add_term_wrapper(&app_state, &TERM_SET_2).unwrap();
 
-        let all_terms = get_all_terms(State(db_info.clone())).unwrap();
+        let all_terms = get_all_terms(State(app_state.clone())).unwrap();
         assert_eq!(all_terms.len(), 2);
-        remove_test_db(&db_info);
+        remove_test_db(&app_state);
     }
 
     #[test]
     fn test_db_get_data_select_term_fuzzy() {
-        let db_info = create_test_db("test_db_get_data_select_term_fuzzy");
-        add_term_wrapper(&db_info, &TERM_SET_1).unwrap();
-        add_term_wrapper(&db_info, &TERM_SET_2).unwrap();
+        let app_state = create_test_app_state("test_db_get_data_select_term_fuzzy");
+        add_term_wrapper(&app_state, &TERM_SET_1).unwrap();
+        add_term_wrapper(&app_state, &TERM_SET_2).unwrap();
 
-        let terms = search_terms(State(db_info.clone()), "erm", "nl").unwrap();
+        let terms = search_terms(State(app_state.clone()), "erm", "nl").unwrap();
         assert_eq!(terms.len(), 1);
         assert_eq!(terms[0].term_language_set.term, Some("term_2".to_string()));
-        remove_test_db(&db_info);
+        remove_test_db(&app_state);
     }
 
     #[test]
     fn test_db_delete_termset() {
-        let db_info = create_test_db("test_db_delete_termset");
-        add_term_wrapper(&db_info, &TERM_SET_1).unwrap();
-        assert_term_exists(&db_info, "term_1", "en");
+        let app_state = create_test_app_state("test_db_delete_termset");
+        add_term_wrapper(&app_state, &TERM_SET_1).unwrap();
+        assert_term_exists(&app_state, "term_1", "en");
 
-        let term_set_id = get_term_set_id(State(db_info.clone()), "term_1", "en")
+        let term_set_id = get_term_set_id(State(app_state.clone()), "term_1", "en")
             .unwrap()
             .unwrap();
-        delete_term(State(db_info.clone()), term_set_id).unwrap();
+        delete_term(State(app_state.clone()), term_set_id).unwrap();
 
-        let terms = search_terms(State(db_info.clone()), "term_1", "en").unwrap();
+        let terms = search_terms(State(app_state.clone()), "term_1", "en").unwrap();
         assert_eq!(terms.len(), 0);
 
-        remove_test_db(&db_info);
+        remove_test_db(&app_state);
     }
 
     #[test]
     fn test_process_single_term_complete() {
-        let db_info = create_test_db("test_process_single_term_complete");
-        let result = process_single_term(State(db_info.clone()), &TERM_SET_1);
+        let app_state = create_test_app_state("test_process_single_term_complete");
+        let result = process_single_term(State(app_state.clone()), &TERM_SET_1);
         assert!(result.is_ok());
-        assert_term_exists(&db_info, "term_1", "en");
-        remove_test_db(&db_info);
+        assert_term_exists(&app_state, "term_1", "en");
+        remove_test_db(&app_state);
     }
 
     #[test]
     fn test_process_single_term_partial() {
-        let db_info = create_test_db("test_process_single_term_partial");
-        let result = process_single_term(State(db_info.clone()), &TERM_SET_3);
+        let app_state = create_test_app_state("test_process_single_term_partial");
+        let result = process_single_term(State(app_state.clone()), &TERM_SET_3);
         assert!(result.is_ok());
-        assert_term_exists(&db_info, "term_3", "fr");
-        remove_test_db(&db_info);
+        assert_term_exists(&app_state, "term_3", "fr");
+        remove_test_db(&app_state);
     }
 
     #[test]
     fn test_process_two_terms() {
-        let db_info = create_test_db("test_process_two_terms");
-        let result = process_two_terms(State(db_info.clone()), &TERM_SET_1, &TERM_SET_2);
+        let app_state = create_test_app_state("test_process_two_terms");
+        let result = process_two_terms(State(app_state.clone()), &TERM_SET_1, &TERM_SET_2);
         assert!(result.is_ok());
 
-        assert_term_exists(&db_info, "term_1", "en");
-        assert_term_exists(&db_info, "term_2", "nl");
-        remove_test_db(&db_info);
+        assert_term_exists(&app_state, "term_1", "en");
+        assert_term_exists(&app_state, "term_2", "nl");
+        remove_test_db(&app_state);
     }
 
     #[test]
     fn test_process_two_terms_partial() {
-        let db_info = create_test_db("test_process_two_terms_partial");
-        let result = process_two_terms(State(db_info.clone()), &TERM_SET_3, &TERM_SET_2);
+        let app_state = create_test_app_state("test_process_two_terms_partial");
+        let result = process_two_terms(State(app_state.clone()), &TERM_SET_3, &TERM_SET_2);
         assert!(result.is_ok());
 
-        assert_term_exists(&db_info, "term_3", "fr");
-        assert_term_exists(&db_info, "term_2", "nl");
-        remove_test_db(&db_info);
+        assert_term_exists(&app_state, "term_3", "fr");
+        assert_term_exists(&app_state, "term_2", "nl");
+        remove_test_db(&app_state);
     }
 
     #[test]
     fn test_process_three_or_more_terms() {
-        let db_info = create_test_db("test_process_three_or_more_terms");
+        let app_state = create_test_app_state("test_process_three_or_more_terms");
         let terms = vec![TERM_SET_1.clone(), TERM_SET_2.clone(), TERM_SET_3.clone()];
-        let result = process_three_or_more_terms(State(db_info.clone()), &terms);
+        let result = process_three_or_more_terms(State(app_state.clone()), &terms);
         assert!(result.is_ok());
 
-        assert_term_exists(&db_info, "term_1", "en");
-        assert_term_exists(&db_info, "term_2", "nl");
-        assert_term_exists(&db_info, "term_3", "fr");
-        remove_test_db(&db_info);
+        assert_term_exists(&app_state, "term_1", "en");
+        assert_term_exists(&app_state, "term_2", "nl");
+        assert_term_exists(&app_state, "term_3", "fr");
+        remove_test_db(&app_state);
     }
 
     #[test]
     fn test_process_three_or_more_terms_with_missing_term() {
-        let db_info = create_test_db("test_process_three_or_more_terms_with_missing_term");
+        let app_state = create_test_app_state("test_process_three_or_more_terms_with_missing_term");
         let terms = vec![TERM_SET_4.clone(), TERM_SET_2.clone(), TERM_SET_3.clone()];
-        let result = process_three_or_more_terms(State(db_info.clone()), &terms);
+        let result = process_three_or_more_terms(State(app_state.clone()), &terms);
         assert!(result.is_ok());
 
         // It should skip TERM_SET_4 because term is None, but still process the others
-        assert_term_exists(&db_info, "term_2", "nl");
-        assert_term_exists(&db_info, "term_3", "fr");
-        remove_test_db(&db_info);
+        assert_term_exists(&app_state, "term_2", "nl");
+        assert_term_exists(&app_state, "term_3", "fr");
+        remove_test_db(&app_state);
     }
 }

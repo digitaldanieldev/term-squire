@@ -27,18 +27,20 @@ use crate::{
     dictionary::database::{
         add_term, add_term_to_term_set, current_epoch, delete_term,
         extract_and_insert_unique_values, get_all_terms, get_term_by_id, search_terms,
-        search_terms_by_term_set_id, update_term, DbInfo, TermsList,
+        search_terms_by_term_set_id, update_term, AppState, TermsList,
     },
     import::{parse::TermLanguageSet, process::import_dictionary_data},
 };
 
 // cache to store search results.
 lazy_static! {
-    static ref SEARCH_CACHE: RwLock<HashMap<String, Vec<TermsList>>> = RwLock::new(HashMap::new());
+    pub static ref SEARCH_CACHE: RwLock<HashMap<String, Vec<TermsList>>> =
+        RwLock::new(HashMap::new());
 }
 
 // clears the search cache
 pub fn clear_cache() {
+    info!("Clearing cache");
     SEARCH_CACHE.write().unwrap().clear();
 }
 
@@ -51,7 +53,7 @@ pub struct AddTermSetRequest {
 
 #[debug_handler]
 pub async fn handle_add_term_set(
-    State(db_info): State<Arc<DbInfo>>,
+    State(app_state): State<Arc<AppState>>,
     Json(payload): Json<AddTermSetRequest>,
 ) -> impl IntoResponse {
     let existing_term_set_id = payload.existing_term_set_id;
@@ -66,11 +68,11 @@ pub async fn handle_add_term_set(
         existing_term_set_id
     );
 
-    match add_term_to_term_set(State(db_info.clone()), existing_term_set_id, &term_set) {
+    match add_term_to_term_set(State(app_state.clone()), existing_term_set_id, &term_set) {
         Ok(_) => {
             info!("Term set added successfully.");
             clear_cache();
-            let _unique_values_result = extract_and_insert_unique_values(State(db_info.clone()));
+            let _unique_values_result = extract_and_insert_unique_values(State(app_state.clone()));
             (
                 StatusCode::OK,
                 "Term set added to existing term successfully",
@@ -96,19 +98,47 @@ pub struct DeleteTermRequest {
 
 #[debug_handler]
 pub async fn handle_delete_term(
-    State(db_info): State<Arc<DbInfo>>,
+    State(app_state): State<Arc<AppState>>,
     Query(params): Query<DeleteTermRequest>,
 ) -> impl IntoResponse {
     let term_id = params.term_id;
 
     info!("Deleting term with ID: {}", term_id);
 
-    match delete_term(State(db_info.clone()), term_id) {
+    match delete_term(State(app_state.clone()), term_id) {
         Ok(_) => {
             info!("Term deleted successfully.");
             clear_cache();
-            let _unique_values_result = extract_and_insert_unique_values(State(db_info.clone()));
-            (StatusCode::OK, "Term deleted successfully").into_response()
+            match get_all_terms(State(app_state.clone())) {
+                Ok(all_terms) => {
+                    {
+                        let mut cache = app_state.terms_cache.lock().unwrap();
+                        *cache = Some(all_terms.clone());
+                    }
+
+                    {
+                        let mut search_cache = SEARCH_CACHE.write().unwrap();
+                        search_cache.clear();
+                        search_cache.insert("*:*".to_string(), all_terms);
+                    }
+
+                    let _ = extract_and_insert_unique_values(State(app_state.clone()));
+
+                    (
+                        StatusCode::OK,
+                        "Term deleted and cache refreshed successfully",
+                    )
+                        .into_response()
+                }
+                Err(e) => {
+                    error!("Failed to reload terms after deletion: {}", e);
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Term deleted but failed to reload cache".to_string(),
+                    )
+                        .into_response()
+                }
+            }
         }
         Err(rusqlite::Error::ExecuteReturnedResults) => {
             info!("Term not found or not deleted.");
@@ -136,7 +166,7 @@ pub struct InsertTermRequest {
 }
 
 pub async fn handle_insert_term(
-    State(db_info): State<Arc<DbInfo>>,
+    State(app_state): State<Arc<AppState>>,
     Json(payload): Json<InsertTermRequest>,
 ) -> impl IntoResponse {
     let mut term_set = payload.term_language_set;
@@ -147,12 +177,46 @@ pub async fn handle_insert_term(
 
     info!("Inserting new term into database.");
 
-    match add_term(State(db_info.clone()), &term_set) {
+    match add_term(State(app_state.clone()), &term_set) {
         Ok(_) => {
             info!("Term inserted successfully.");
+
+            // Clear the global SEARCH_CACHE
             clear_cache();
-            let _unique_values_result = extract_and_insert_unique_values(State(db_info.clone()));
-            (StatusCode::OK, "Term inserted successfully").into_response()
+
+            // Reload all terms from DB and update caches
+            match get_all_terms(State(app_state.clone())) {
+                Ok(all_terms) => {
+                    {
+                        // Update app_state cache
+                        let mut cache = app_state.terms_cache.lock().unwrap();
+                        *cache = Some(all_terms.clone());
+                    }
+
+                    {
+                        // Repopulate global SEARCH_CACHE wildcard key
+                        let mut search_cache = SEARCH_CACHE.write().unwrap();
+                        search_cache.insert("*:*".to_string(), all_terms);
+                    }
+
+                    // Optionally update unique values cache
+                    let _ = extract_and_insert_unique_values(State(app_state.clone()));
+
+                    (
+                        StatusCode::OK,
+                        "Term inserted and cache refreshed successfully",
+                    )
+                        .into_response()
+                }
+                Err(e) => {
+                    error!("Failed to reload terms after insertion: {}", e);
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Term inserted but failed to reload cache".to_string(),
+                    )
+                        .into_response()
+                }
+            }
         }
         Err(err) => {
             error!("Failed to insert term: {}", err);
@@ -164,10 +228,9 @@ pub async fn handle_insert_term(
         }
     }
 }
-
 // import dictionary data
 pub async fn handle_import_dictionary_data(
-    State(db_info): State<Arc<DbInfo>>,
+    State(app_state): State<Arc<AppState>>,
     mut multipart: Multipart,
 ) -> impl IntoResponse {
     while let Some(mut field) = match multipart.next_field().await {
@@ -249,9 +312,11 @@ pub async fn handle_import_dictionary_data(
 
             info!("Dictionary file {} uploaded successfully.", name);
 
-            if let Err(err) =
-                import_dictionary_data(State(db_info.clone()), file_path.to_string_lossy().as_ref())
-                    .await
+            if let Err(err) = import_dictionary_data(
+                State(app_state.clone()),
+                file_path.to_string_lossy().as_ref(),
+            )
+            .await
             {
                 error!("Failed to import dictionary: {}", err);
                 return (
@@ -260,14 +325,49 @@ pub async fn handle_import_dictionary_data(
                 )
                     .into_response();
             }
+
+            // Clear cache after import
             clear_cache();
-            return (StatusCode::OK, "Dictionary imported successfully").into_response();
+
+            // Repopulate caches
+            match get_all_terms(State(app_state.clone())) {
+                Ok(all_terms) => {
+                    {
+                        // Update app_state cache
+                        let mut cache = app_state.terms_cache.lock().unwrap();
+                        *cache = Some(all_terms.clone());
+                    }
+
+                    {
+                        // Repopulate global SEARCH_CACHE wildcard key
+                        let mut search_cache = SEARCH_CACHE.write().unwrap();
+                        search_cache.insert("*:*".to_string(), all_terms);
+                    }
+
+                    // Optionally update unique values cache
+                    let _ = extract_and_insert_unique_values(State(app_state.clone()));
+
+                    info!("Cache repopulated after dictionary import.");
+                    return (
+                        StatusCode::OK,
+                        "Dictionary imported and cache refreshed successfully",
+                    )
+                        .into_response();
+                }
+                Err(e) => {
+                    error!("Failed to reload terms after import: {}", e);
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Dictionary imported but failed to reload cache".to_string(),
+                    )
+                        .into_response();
+                }
+            }
         }
     }
 
     (StatusCode::BAD_REQUEST, "No file was uploaded".to_string()).into_response()
 }
-
 // import dictionary file
 #[derive(Template)]
 #[template(path = "import_form.html")]
@@ -349,13 +449,25 @@ pub async fn handle_get_settings() -> impl IntoResponse {
 pub struct TermsTemplate {
     pub terms: Vec<TermsList>,
 }
+pub async fn handle_terms(State(app_state): State<Arc<AppState>>) -> Html<String> {
+    // Try reading from cache
+    if let Some(cached_terms) = app_state.terms_cache.lock().unwrap().as_ref() {
+        let template = TermsTemplate {
+            terms: cached_terms.clone(),
+        };
+        return Html(
+            template
+                .render()
+                .unwrap_or_else(|_| "Template rendering error".to_string()),
+        );
+    }
 
-pub async fn handle_terms(State(db_info): State<Arc<DbInfo>>) -> Html<String> {
-    info!("Fetching terms.");
-
-    match get_all_terms(State(db_info.clone())) {
+    // Cache miss: query DB synchronously
+    match get_all_terms(State(app_state.clone())) {
         Ok(terms) => {
-            info!("Terms fetched successfully.");
+            // Update the cache
+            *app_state.terms_cache.lock().unwrap() = Some(terms.clone());
+
             let template = TermsTemplate { terms };
             Html(
                 template
@@ -364,7 +476,7 @@ pub async fn handle_terms(State(db_info): State<Arc<DbInfo>>) -> Html<String> {
             )
         }
         Err(err) => {
-            error!("Failed to get data: {}", err);
+            error!("Failed to get terms: {}", err);
             Html(format!("<h1>Failed to get data: {err}</h1>"))
         }
     }
@@ -383,14 +495,14 @@ pub struct TermDetailTemplate {
 }
 
 pub async fn handle_get_term_details(
-    State(db_info): State<Arc<DbInfo>>,
+    State(app_state): State<Arc<AppState>>,
     Query(params): Query<TermDetailRequest>,
 ) -> impl IntoResponse {
     let term_id = params.term_id;
 
     info!("Fetching details for term ID: {}", term_id);
 
-    match get_term_by_id(State(db_info.clone()), term_id) {
+    match get_term_by_id(State(app_state.clone()), term_id) {
         Ok(Some(term)) => {
             info!("Term details fetched successfully.");
             let template = TermDetailTemplate { term };
@@ -424,42 +536,79 @@ pub struct SearchResultsTemplate {
     pub terms: Vec<TermsList>,
     pub count: usize,
 }
-
 pub async fn handle_search_terms(
-    State(db_info): State<Arc<DbInfo>>,
+    State(app_state): State<Arc<AppState>>,
     Query(params): Query<SearchRequest>,
 ) -> impl IntoResponse {
     let term_select = params.term.clone();
     let language_select = params.language.clone();
     let cache_key = format!("{term_select}:{language_select}");
 
-    // Check the cache first
-    if let Some(cached_results) = SEARCH_CACHE.read().unwrap().get(&cache_key) {
+    let search_cache_read = SEARCH_CACHE.read().unwrap();
+
+    if let Some(cached_results) = search_cache_read.get(&cache_key) {
         info!(
-            "Cache hit for search term: {} and language: {}",
+            "Request cache hit for term: '{}' and language: '{}'",
             term_select, language_select
         );
         return Json(cached_results.clone());
     }
 
+    if term_select.is_empty() || language_select.is_empty() {
+        if let Some(all_terms) = search_cache_read.get("*:*") {
+            info!("Using wildcard '*:*' cache to filter results in-memory.");
+
+            let filtered: Vec<TermsList> = all_terms
+                .iter()
+                .filter(|t| {
+                    let term_str = t.term_language_set.term.as_deref().unwrap_or("");
+                    let lang_str = t.term_language_set.language.as_deref().unwrap_or("");
+
+                    (term_select.is_empty() || term_str.contains(&term_select))
+                        && (language_select.is_empty() || lang_str == language_select)
+                })
+                .cloned()
+                .collect();
+
+            drop(search_cache_read); // drop read lock before write lock
+
+            SEARCH_CACHE
+                .write()
+                .unwrap()
+                .insert(cache_key.clone(), filtered.clone());
+
+            return Json(filtered);
+        }
+    }
+
+    drop(search_cache_read);
+
     info!(
-        "Cache miss for search term: {} and language: {}",
+        "Cache miss for term: '{}' and language: '{}', querying DB.",
         term_select, language_select
     );
 
-    // Perform the database search if cache miss
-    match search_terms(State(db_info.clone()), &term_select, &language_select) {
+    match search_terms(State(app_state.clone()), &term_select, &language_select) {
         Ok(terms) => {
-            info!("Search completed successfully.");
-            // Update the cache
+            info!(
+                "Search returned {} results for term: '{}' and language: '{}'",
+                terms.len(),
+                term_select,
+                language_select
+            );
+
             SEARCH_CACHE
                 .write()
                 .unwrap()
                 .insert(cache_key, terms.clone());
+
             Json(terms)
         }
         Err(err) => {
-            error!("Failed to search terms: {}", err);
+            error!(
+                "Error searching for term: '{}' and language: '{}': {}",
+                term_select, language_select, err
+            );
             Json(vec![])
         }
     }
@@ -471,14 +620,14 @@ pub struct SearchByTermSetIdRequest {
 }
 
 pub async fn handle_search_terms_by_term_set_id(
-    State(db_info): State<Arc<DbInfo>>,
+    State(app_state): State<Arc<AppState>>,
     Query(params): Query<SearchByTermSetIdRequest>,
 ) -> impl IntoResponse {
     let term_set_id = params.term_set_id;
 
     info!("Searching for terms with term_set_id: {}", term_set_id);
 
-    match search_terms_by_term_set_id(State(db_info.clone()), term_set_id) {
+    match search_terms_by_term_set_id(State(app_state.clone()), term_set_id) {
         Ok(terms) => {
             info!("Search completed successfully.");
             Json(terms)
@@ -498,7 +647,7 @@ pub struct UpdateTermRequest {
 }
 
 pub async fn handle_update_term(
-    State(db_info): State<Arc<DbInfo>>,
+    State(app_state): State<Arc<AppState>>,
     Json(payload): Json<UpdateTermRequest>,
 ) -> impl IntoResponse {
     let term_id = payload.term_id;
@@ -509,12 +658,46 @@ pub async fn handle_update_term(
 
     info!("Updating term ID: {}", term_id);
 
-    match update_term(State(db_info.clone()), term_id, &term_set) {
+    match update_term(State(app_state.clone()), term_id, &term_set) {
         Ok(_) => {
             info!("Term updated successfully.");
             clear_cache();
-            let _unique_values_result = extract_and_insert_unique_values(State(db_info.clone()));
-            (StatusCode::OK, "Term updated successfully").into_response()
+
+            // Repopulate caches after update
+            match get_all_terms(State(app_state.clone())) {
+                Ok(all_terms) => {
+                    {
+                        // Update app_state cache
+                        let mut cache = app_state.terms_cache.lock().unwrap();
+                        *cache = Some(all_terms.clone());
+                    }
+
+                    {
+                        // Repopulate global SEARCH_CACHE wildcard key
+                        let mut search_cache = SEARCH_CACHE.write().unwrap();
+                        search_cache.insert("*:*".to_string(), all_terms);
+                    }
+
+                    // Optionally update unique values cache
+                    let _unique_values_result =
+                        extract_and_insert_unique_values(State(app_state.clone()));
+
+                    info!("Cache repopulated after term update.");
+                    (
+                        StatusCode::OK,
+                        "Term updated successfully and cache refreshed",
+                    )
+                        .into_response()
+                }
+                Err(e) => {
+                    error!("Failed to reload terms after update: {}", e);
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Term updated but failed to reload cache".to_string(),
+                    )
+                        .into_response()
+                }
+            }
         }
         Err(err) => {
             error!("Failed to update term: {}", err);
@@ -526,7 +709,6 @@ pub async fn handle_update_term(
         }
     }
 }
-
 // manage database
 #[derive(Template)]
 #[template(path = "database_management.html")]
@@ -543,8 +725,8 @@ pub async fn handle_database_management() -> Html<String> {
 }
 
 // download the database
-pub async fn handle_download_db_file(State(db_info): State<Arc<DbInfo>>) -> impl IntoResponse {
-    let path = &db_info.path();
+pub async fn handle_download_db_file(State(app_state): State<Arc<AppState>>) -> impl IntoResponse {
+    let path = &app_state.db_info.path();
 
     if !Path::new(path).exists() {
         error!("Database file not found: {}", path);
@@ -595,26 +777,26 @@ pub async fn handle_download_db_file(State(db_info): State<Arc<DbInfo>>) -> impl
         }
     }
 }
-// upload database
+
 pub async fn handle_upload_db_file(
-    State(db_info): State<Arc<DbInfo>>,
+    State(app_state): State<Arc<AppState>>,
     mut multipart: Multipart,
 ) -> impl IntoResponse {
-    let db_file_path = &db_info.path();
+    let db_file_path = &app_state.db_info.path();
     info!("Starting database file upload.");
 
-    while let Some(field) = multipart.next_field().await.unwrap_or(None) {
+    if let Some(field) = multipart.next_field().await.unwrap_or(None) {
         let file_name = field.file_name().unwrap_or("uploaded_file").to_string();
         let content_type = field.content_type().unwrap_or("unknown");
 
-        if content_type != "application/octet-stream" && !file_name.ends_with(".db") {
+        if content_type != "application/octet-stream" && !file_name.ends_with(".db.sqlite") {
             error!(
-                "Invalid file type: {}. Only .db files are accepted.",
+                "Invalid file type: {}. Only .db.sqlite files are accepted.",
                 content_type
             );
             return (
                 StatusCode::BAD_REQUEST,
-                format!("Invalid file type: {content_type}. Only .db files are accepted."),
+                format!("Invalid file type: {content_type}. Only .db.sqlite files are accepted."),
             )
                 .into_response();
         }
@@ -656,15 +838,40 @@ pub async fn handle_upload_db_file(
 
         info!("Database file uploaded successfully: {}", db_file_path);
 
-        // Clear cache after uploading the database
         clear_cache();
-        info!("Cache cleared after uploading the database.");
 
-        return (
-            StatusCode::OK,
-            format!("Successfully uploaded and saved as '{db_file_path}'"),
-        )
-            .into_response();
+        // Repopulate caches after DB upload
+        match get_all_terms(State(app_state.clone())) {
+            Ok(all_terms) => {
+                {
+                    // Update app_state cache
+                    let mut cache = app_state.terms_cache.lock().unwrap();
+                    *cache = Some(all_terms.clone());
+                }
+
+                {
+                    // Repopulate global SEARCH_CACHE wildcard key
+                    let mut search_cache = SEARCH_CACHE.write().unwrap();
+                    search_cache.insert("*:*".to_string(), all_terms);
+                }
+
+                info!("Cache repopulated after database upload.");
+
+                return (
+                    StatusCode::OK,
+                    format!("Successfully uploaded and saved as '{db_file_path}'"),
+                )
+                    .into_response();
+            }
+            Err(e) => {
+                error!("Failed to reload terms after DB upload: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Uploaded DB saved but failed to reload cache".to_string(),
+                )
+                    .into_response();
+            }
+        }
     }
 
     error!("No file found in the upload request");

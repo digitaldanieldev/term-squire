@@ -2,40 +2,49 @@ use axum::extract::{DefaultBodyLimit, State};
 use axum::routing::{delete, get, post};
 use axum::Router;
 use clap::{arg, command, Parser};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use term_squire::constants::CURRENT_DB_NAME;
 use term_squire::dictionary::{database::*, handlers::*};
 use term_squire::logging::*;
 use tracing::info;
+
 /// simple dictionary
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
+    /// Directory where data is stored
+    #[arg(short, long, default_value = "/data/term-squire-data")]
+    data_dir: String,
+    /// Logging level
+    #[arg(short, long, default_value = "info")]
+    log_level: String,
     /// Port number used for server
     #[arg(short, long, default_value_t = 1234)]
     port: u64,
-    /// Directory where data is stored
-    #[arg(short, long, default_value = "/data/term-squire-data/")]
-    datadir: String,
 }
 
 #[tokio::main]
-async fn main() {
-    init_tracing();
-
+async fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
+    let log_level = parse_log_level(&args.log_level)?;
+    let _ = load_logging_config(log_level);
 
     let db_info = Arc::new(DbInfo {
-        dir: if args.datadir.is_empty() {
-            "/data/term-squire-data/".to_string()
+        dir: if args.data_dir.is_empty() {
+            "/data/term-squire-data".to_string()
         } else {
-            args.datadir.clone()
+            args.data_dir.clone()
         },
         name: CURRENT_DB_NAME.to_string(),
         table_name: "terms".to_string(),
     });
 
-    init_db(State(db_info.clone()));
+    let app_state = Arc::new(AppState {
+        db_info: db_info.clone(),
+        terms_cache: Arc::new(Mutex::new(None)),
+    });
+
+    init_db(State(app_state.clone()))?;
 
     let app = Router::new()
         .route("/add_term_set", post(handle_add_term_set))
@@ -57,7 +66,7 @@ async fn main() {
         .route("/update_term", post(handle_update_term))
         .route("/upload_db_file", post(handle_upload_db_file))
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
-        .with_state(db_info)
+        .with_state(app_state)
         .into_make_service();
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", args.port))
@@ -65,4 +74,5 @@ async fn main() {
         .unwrap();
     info!("Starting server on port {}", args.port);
     axum::serve(listener, app).await.unwrap();
+    Ok(())
 }
